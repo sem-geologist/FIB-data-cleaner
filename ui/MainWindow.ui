@@ -100,14 +100,14 @@
                   </item>
                   <item>
                    <widget class="QCheckBox" name="slice_lock">
+                    <property name="toolTip">
+                     <string/>
+                    </property>
                     <property name="layoutDirection">
                      <enum>Qt::RightToLeft</enum>
                     </property>
                     <property name="text">
                      <string> Lock onto current slice</string>
-                    </property>
-                    <property name="shortcut">
-                     <string>L</string>
                     </property>
                    </widget>
                   </item>
@@ -316,7 +316,33 @@
                           <bool>false</bool>
                          </property>
                          <property name="text">
-                          <string>init. slice(s)</string>
+                          <string>init for slice</string>
+                         </property>
+                         <property name="checkable">
+                          <bool>true</bool>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QPushButton" name="show_ref_points">
+                         <property name="enabled">
+                          <bool>false</bool>
+                         </property>
+                         <property name="text">
+                          <string>3 point def.</string>
+                         </property>
+                         <property name="checkable">
+                          <bool>true</bool>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QPushButton" name="pin_points_to_slice">
+                         <property name="enabled">
+                          <bool>false</bool>
+                         </property>
+                         <property name="text">
+                          <string>🖈</string>
                          </property>
                          <property name="checkable">
                           <bool>true</bool>
@@ -330,16 +356,6 @@
                          </property>
                          <property name="text">
                           <string>reset</string>
-                         </property>
-                        </widget>
-                       </item>
-                       <item>
-                        <widget class="QPushButton" name="push_to_array">
-                         <property name="enabled">
-                          <bool>false</bool>
-                         </property>
-                         <property name="text">
-                          <string>push to array</string>
                          </property>
                         </widget>
                        </item>
@@ -520,6 +536,7 @@
      <string>View</string>
     </property>
     <addaction name="actionshow_markers"/>
+    <addaction name="actionlock_onto_current_slice"/>
    </widget>
    <widget class="QMenu" name="menuhelp">
     <property name="title">
@@ -583,7 +600,7 @@
     <bool>false</bool>
    </property>
    <property name="text">
-    <string>show_dummy_markers</string>
+    <string>show dummy markers</string>
    </property>
   </action>
   <action name="actionCrop">
@@ -607,6 +624,17 @@
   <action name="actionAbout_this_software">
    <property name="text">
     <string>About this software</string>
+   </property>
+  </action>
+  <action name="actionlock_onto_current_slice">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>lock onto current slice</string>
+   </property>
+   <property name="shortcut">
+    <string>Shift+T</string>
    </property>
   </action>
  </widget>
@@ -680,6 +708,54 @@
     <hint type="destinationlabel">
      <x>546</x>
      <y>671</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>init_slice_btn</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>init_slice_btn</receiver>
+   <slot>setDisabled(bool)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>370</x>
+     <y>428</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>394</x>
+     <y>420</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>actionlock_onto_current_slice</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>slice_lock</receiver>
+   <slot>setChecked(bool)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>221</x>
+     <y>327</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>slice_lock</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>actionlock_onto_current_slice</receiver>
+   <slot>setChecked(bool)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>221</x>
+     <y>327</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>-1</x>
+     <y>-1</y>
     </hint>
    </hints>
   </connection>

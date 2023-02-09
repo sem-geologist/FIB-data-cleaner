@@ -1,16 +1,15 @@
-#! /media/zircon/bulk-data/python-virtual-environments/hyper/bin/python
-import numpy as np
 import sys
+import json
+import gc
+import numpy as np
+from os import path
+from copy import copy
 from PyQt5 import QtCore, QtGui, QtWidgets
 import hyperspy.api as hs
-import json
-from copy import copy
 import pyqtgraph as pg
 from ui import MainWindow
 from scipy.ndimage import affine_transform
-from os import path
 pg.setConfigOption('imageAxisOrder', 'row-major')
-import gc
 
 
 class FIBSliceCorrector(QtWidgets.QMainWindow,
@@ -23,6 +22,8 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         delegate = SpinBoxDelegate()
         self.mtv.setItemDelegate(delegate)
         self.actionLoad.triggered.connect(self.load_cube)
+        self.actionAbout_Qt.triggered.connect(self.show_about_qt)
+        self.actionAbout_this_software.triggered.connect(self.show_about)
         self.v_depth_iv.ui.roiBtn.hide()
         self.h_depth_iv.ui.roiBtn.hide()
         self.h_depth_iv.getView().invertY(False)
@@ -30,6 +31,8 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.slice_iv.ui.menuBtn.hide()
         self.h_depth_iv.ui.menuBtn.hide()
         self.v_depth_iv.ui.menuBtn.hide()
+        # simple shift (True), affine matrix (False):
+        self.simple_mode = True
 
     @classmethod
     def gen_affine_transformation_matrix(cls):
@@ -38,25 +41,63 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
                          [0., 0., 1.]],
                         dtype=np.float64)
 
-    def set_at_at_index(self, index_z=None):
+    def get_index_for_manipulation(self):
+        if self.slice_lock.isChecked():
+            return self.locked_index
+        return self.current_i
+
+    def init_at_at_index(self, index_z=None):
         """generate and set initial affine transformation matrix
            for given index, also generate model, which can be
-           viewd with QTableView"""
-        #print("at engaged")
+           viewed with QTableView"""
         if index_z is None:
-            index_z = self.current_i
+            current_flag = True
+            index_z = self.get_index_for_manipulation()
         if index_z not in self.at_matrices:
             self.at_matrices[index_z] = {
                 'matrix': self.gen_affine_transformation_matrix()}
             TransformationMatrixModel(self.at_matrices[index_z])
             self.at_matrices[index_z]['initial'] = copy(self.i_data[index_z])
-            self.at_matrices[index_z]['model'].dataChanged.connect(
-                                            self.apply_affine_transformation)
-        #print('mtv_model:', self.mtv.model())
-        self.mtv.setModel(self.at_matrices[index_z]['model'])
-        self.mtv.setEnabled(True)
+            if current_flag:
+                self.switch_to_matrix_correction_widget()
+
+    def remove_at_and_reset(self):
+        i = self.get_index_for_manipulation()
+        self.i_data[i] = self.at_matrices[i]['initial']
+        self.at_matrices[i]['model'].dataChanged.disconnect(
+            self.apply_affine_transformation)
+        self.mtv.setModel(None)
+        del self.at_matrices[i]
+        self.mtv.setEnabled(False)
+        self.reset_matrix.setEnabled(False)
+        self.update_images()
+        self.switch_to_simple_shift_widget()
+
+    def switch_to_matrix_correction_widget(self):
+        i = self.get_index_for_manipulation()
+        self.mtv.setModel(self.at_matrices[i]['model'])
+        self.show_ref_points.setEnabled(True)
         self.reset_matrix.setEnabled(True)
-        self.push_to_array.setEnabled(True)
+        self.init_slice_btn.setEnabled(False)
+        self.mtv.setEnabled(True)
+        self.at_matrices[i]['model'].dataChanged.connect(
+            self.apply_affine_transformation)
+        self.sc_group.setEnabled(False)
+        self.to_end_checkbox.setChecked(False)
+        self.slices_spinbox.setValue(1)
+        self.simple_mode = False
+
+    def switch_to_simple_shift_widget(self):
+        self.show_ref_points.setEnabled(False)
+        self.reset_matrix.setEnabled(False)
+        self.init_slice_btn.blockSignals(True)
+        self.init_slice_btn.setChecked(False)
+        self.init_slice_btn.blockSignals(False)
+        self.init_slice_btn.setEnabled(True)
+        self.mtv.setEnabled(False)
+        self.mtv.setModel(None)
+        self.sc_group.setEnabled(True)
+        self.simple_mode = True
 
     def apply_shifts(self, shifts):
         for i in range(self.i_data.shape[0]):
@@ -106,7 +147,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
                 self.at_matrices[i]['initial'] = copy(self.i_data[i])
                 self.at_matrices[i]['model'].dataChanged.connect(
                                               self.apply_affine_transformation)
-        self.update_matrix_widget()
+        self.update_shift_widget()
         self.slice_iv.updateImage()
         self.v_depth_iv.updateImage()
         self.h_depth_iv.updateImage()
@@ -127,7 +168,8 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.h_slice_line.sigPositionChanged.connect(
                                                 self.change_horizontal_slice)
         self.init_slice_btn.setEnabled(True)
-        self.init_slice_btn.pressed.connect(self.set_at_at_index)
+        self.init_slice_btn.pressed.connect(self.init_at_at_index)
+        self.reset_matrix.pressed.connect(self.remove_at_and_reset)
         self.actionSave_corrections.setEnabled(True)
         self.actionSave_corrections.triggered.connect(self.save_corrections)
 
@@ -172,10 +214,13 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             self.slice_lock.setText(
                   ' Lock onto current slice:')
             self.slice_iv.removeItem(self.locked_image_item)
+            self.locked_image_item = None
             self.horiz_line_2.show()
             self.vert_line_2.show()
             self.horiz_line_locked.hide()
             self.vert_line_locked.hide()
+            self.update_shift_widget()
+            self.which_widget() 
 
     def change_locked_image_opacity(self, int_value):
         self.locked_image_item.setOpacity(int_value / 100)
@@ -187,13 +232,21 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.cube.save(fn)
 
     def crop_cube(self):
+        if self.actionlock_onto_current_slice.isChecked():
+            self.actionlock_onto_current_slice.setChecked(False)
         self.cube.crop(1, start=int(self.align_line_x1.pos()[0]),
                        end=int(self.align_line_x2.pos()[0]))
         self.cube.crop(2, start=int(self.align_line_y1.pos()[1]),
                        end=int(self.align_line_y2.pos()[1]))
         self.i_data = self.cube.data
-        self.shifts = np.zeros(shape=(self.i_data.shape[0], 2))
-        self.shifts = self.shifts.astype(np.int32)
+        self.shifts = np.zeros(shape=(self.i_data.shape[0], 2),
+                               dtype=np.int32)
+        self.at_matrices = {}
+        self.switch_to_simple_shift_widget()
+        self.align_line_x1.setPos(0)
+        self.align_line_x2.setPos(self.i_data.shape[2])
+        self.align_line_y1.setPos(0)
+        self.align_line_y2.setPos(self.i_data.shape[1])
         self.slice_iv.setImage(self.i_data)
         self.setup_slicers()
 
@@ -219,6 +272,8 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         if fn is None or fn == "":
             return
         # clean up previous
+        if self.actionlock_onto_current_slice.isChecked():
+            self.actionlock_onto_current_slice.setChecked(False)
         self.cube = None
         self.i_data = None
         self.shifts = None
@@ -279,15 +334,17 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             self.v_depth_iv.addItem(self.vert_line_2)
             self.v_slice_line = pg.InfiniteLine(
                 pos=self.i_data.shape[2] // 2, movable=True,
-                pen='b')
+                pen='b', bounds=[0, self.i_data.shape[2] - 1])
             self.h_slice_line = pg.InfiniteLine(
                 pos=self.i_data.shape[1] // 2, angle=0,
-                movable=True, pen='b')
+                movable=True, pen='b', bounds=[0, self.i_data.shape[1] - 1])
             self.slice_iv.addItem(self.v_slice_line)
             self.slice_iv.addItem(self.h_slice_line)
         else:
             self.v_slice_line.setPos(self.i_data.shape[2] // 2)
+            self.v_slice_line.setBounds([0, self.i_data.shape[2] - 1])
             self.h_slice_line.setPos(self.i_data.shape[1] // 2)
+            self.h_slice_line.setBounds([0, self.i_data.shape[1] - 1])
         self.slice_xz = self.i_data[:, self.i_data.shape[1] // 2, :]
         self.slice_yz = self.i_data[:, :, self.i_data.shape[2] // 2]
         self.v_depth_iv.setImage(self.slice_yz.T)
@@ -355,58 +412,69 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.vert_line_2.setPos(index + strenght)
         self.slices_spinbox.setMaximum(
             self.i_data.shape[0] - index)
-        self.update_matrix_widget()
-        self.update_affine_view()
+        if not self.slice_lock.isChecked():
+            self.update_shift_widget()
+            self.which_widget() 
 
-    def update_matrix_widget(self):
-        # print('update_matrix_widget')
-        if self.slice_lock.isChecked():
-            index = self.locked_index
-        else:
-            index = self.current_i
+    def update_shift_widget(self):
+        index = self.get_index_for_manipulation()
         self.label_x_correction.setText('x: {}'.format(self.shifts[index][0]))
         self.label_y_correction.setText('y: {}'.format(self.shifts[index][1]))
 
-    def update_affine_view(self):
-        # print('update affine view')
-        index = self.current_i
-        if self.slice_lock.isChecked():
-            return
-        if index in self.at_matrices:
-            if self.init_slice_btn.isChecked():
-                self.set_at_at_index()
+    def which_widget(self):
+        index = self.get_index_for_manipulation()
+        if self.simple_mode:
+            if index in self.at_matrices:
+                self.switch_to_matrix_correction_widget()
+        else:
+            if index in self.at_matrices:
+                self.update_affine_widget()
             else:
-                self.init_slice_btn.setChecked(True)
-        elif self.init_slice_btn.isChecked():
-            self.init_slice_btn.setChecked(False)
+                self.switch_to_simple_shift_widget()
+
+
+    def update_affine_widget(self):
+        index = self.get_index_for_manipulation()
+        self.mtv.setModel(self.at_matrices[index]["model"])
+    #    index = self.current_i
+    #    if self.slice_lock.isChecked():
+    #        return
+    #    if index in self.at_matrices:
+    #        if self.init_slice_btn.isChecked():
+    #            self.set_at_at_index()
+    #        else:
+    #            self.init_slice_btn.setChecked(True)
+    #    elif self.init_slice_btn.isChecked():
+    #        self.init_slice_btn.setChecked(False)
 
     def update_aspect_ratio(self):
-        d, okPressed = QtWidgets.QInputDialog.getDouble(
-                    self, "Get inter-slice interval",
-                    "distance in-between slices (in nm):", 10.05,
-                    0, 100, 10)
-        if okPressed:
-            self.cube.axes_manager[0].scale = d
+        z_val, ok_clicked = QtWidgets.QInputDialog.getDouble(
+            self, "Get inter-slice interval",
+            "distance in-between slices (in nm):", 10.05,
+            0, 100,
+            10)
+        if ok_clicked:
+            self.cube.axes_manager[0].scale = z_val
             self.cube.axes_manager[0].units = 'nm'
-            x = self.cube.axes_manager[1].scale
-            self.v_depth_iv.getView().setAspectLocked(True, ratio=d/x)
-            self.h_depth_iv.getView().setAspectLocked(True, ratio=x/d)
+            x_val = self.cube.axes_manager[1].scale
+            self.v_depth_iv.getView().setAspectLocked(True, ratio=z_val/x_val)
+            self.h_depth_iv.getView().setAspectLocked(True, ratio=x_val/z_val)
 
-    def apply_affine_transformation(self):
-        """scipy.ndimage.affine_transform"""
-        # print('apply_affine_transformation')
-        if self.slice_lock.isChecked():
-            index = self.locked_index
-        else:
-            index = self.current_i
-        self.i_data[index] = affine_transform(
-            self.at_matrices[index]['initial'],
-            self.at_matrices[index]['matrix'])
+    def update_images(self):
         self.slice_iv.updateImage()
         self.v_depth_iv.updateImage()
         self.h_depth_iv.updateImage()
         if self.slice_lock.isChecked():
             self.locked_image_item.updateImage()
+
+    def apply_affine_transformation(self, index=None):
+        """scipy.ndimage.affine_transform"""
+        if not isinstance(index, int):
+            index = self.get_index_for_manipulation()
+        self.i_data[index] = affine_transform(
+            self.at_matrices[index]['initial'],
+            self.at_matrices[index]['matrix'])
+        self.update_images()
 
     def shift_multi(self, strenght, axis):
         if self.slice_lock.isChecked():
@@ -420,16 +488,12 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
                 end = index + self.slices_spinbox.value()
         for i in range(index, end):
             self.i_data[i] = np.roll(self.i_data[i], strenght, axis=axis)
-        self.slice_iv.updateImage()
-        self.v_depth_iv.updateImage()
-        self.h_depth_iv.updateImage()
         if axis == 1:
             self.shifts[index:end, 0] += strenght
         elif axis == 0:
             self.shifts[index:end, 1] += strenght
-        if self.slice_lock.isChecked():
-            self.locked_image_item.updateImage()
-        self.update_matrix_widget()
+        self.update_images()
+        self.update_shift_widget()
 
     def shift_right(self):
         strenght = self.strenght_spinbox.value()
@@ -446,6 +510,16 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
     def shift_down(self):
         strenght = self.strenght_spinbox.value()
         self.shift_multi(strenght, 0)
+
+    def show_about_qt(self):
+        QtWidgets.QMessageBox.aboutQt(self)
+
+    def show_about(self):
+        QtWidgets.QMessageBox.about(self, "About this software",
+                                    "Created by Petras Jokubauskas.\n"
+                                    "This is free open source software "
+                                    "licensed under GPLv3.\n\n"
+                                    f"Current PyQt5 version: {QtCore.PYQT_VERSION_STR}")
 
 
 class TransformationMatrixModel(QtCore.QAbstractTableModel):
@@ -525,10 +599,16 @@ class SpinBoxDelegate(QtWidgets.QStyledItemDelegate):
     def createEditor(self, parent, option, index):
         editor = QtWidgets.QDoubleSpinBox(parent)
         editor.setFrame(False)
-        editor.setMinimum(-100)
-        editor.setMaximum(100)
-        editor.setSingleStep(0.001)
-        editor.setDecimals(3)
+        if index.column() < 2:
+            editor.setMinimum(-10)
+            editor.setMaximum(10)
+            editor.setSingleStep(0.001)
+            editor.setDecimals(3)
+        else:
+            editor.setMinimum(-1000)
+            editor.setMaximum(1000)
+            editor.setSingleStep(0.1)
+            editor.setDecimals(2)
         return editor
 
     def setEditorData(self, spinBox, index):
@@ -544,13 +624,9 @@ class SpinBoxDelegate(QtWidgets.QStyledItemDelegate):
 
 
 def main():
-    #print("main start")
     app = QtWidgets.QApplication(sys.argv)
-    #print("app_loop_created")
     main_window = FIBSliceCorrector()
-    #print("gui created")
     main_window.show()
-    #print("gui is being shown")
     app.exec()
 
 

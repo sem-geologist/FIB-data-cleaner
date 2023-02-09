@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'MainWindow.ui'
+# Form implementation generated from reading ui file 'ui/MainWindow.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.9
 #
@@ -67,6 +67,7 @@ class Ui_MainWindow(object):
         self.current_slice_n.setObjectName("current_slice_n")
         self.horizontalLayout_3.addWidget(self.current_slice_n)
         self.slice_lock = QtWidgets.QCheckBox(self.widget_2)
+        self.slice_lock.setToolTip("")
         self.slice_lock.setLayoutDirection(QtCore.Qt.RightToLeft)
         self.slice_lock.setObjectName("slice_lock")
         self.horizontalLayout_3.addWidget(self.slice_lock)
@@ -151,14 +152,20 @@ class Ui_MainWindow(object):
         self.init_slice_btn.setCheckable(True)
         self.init_slice_btn.setObjectName("init_slice_btn")
         self.verticalLayout_5.addWidget(self.init_slice_btn)
+        self.show_ref_points = QtWidgets.QPushButton(self.widget)
+        self.show_ref_points.setEnabled(False)
+        self.show_ref_points.setCheckable(True)
+        self.show_ref_points.setObjectName("show_ref_points")
+        self.verticalLayout_5.addWidget(self.show_ref_points)
+        self.pin_points_to_slice = QtWidgets.QPushButton(self.widget)
+        self.pin_points_to_slice.setEnabled(False)
+        self.pin_points_to_slice.setCheckable(True)
+        self.pin_points_to_slice.setObjectName("pin_points_to_slice")
+        self.verticalLayout_5.addWidget(self.pin_points_to_slice)
         self.reset_matrix = QtWidgets.QPushButton(self.widget)
         self.reset_matrix.setEnabled(False)
         self.reset_matrix.setObjectName("reset_matrix")
         self.verticalLayout_5.addWidget(self.reset_matrix)
-        self.push_to_array = QtWidgets.QPushButton(self.widget)
-        self.push_to_array.setEnabled(False)
-        self.push_to_array.setObjectName("push_to_array")
-        self.verticalLayout_5.addWidget(self.push_to_array)
         self.gridLayout.addWidget(self.widget, 0, 1, 2, 1)
         self.mtv = QtWidgets.QTableView(self.groupBox_4)
         self.mtv.setEnabled(False)
@@ -254,6 +261,9 @@ class Ui_MainWindow(object):
         self.actionAbout_Qt.setObjectName("actionAbout_Qt")
         self.actionAbout_this_software = QtWidgets.QAction(MainWindow)
         self.actionAbout_this_software.setObjectName("actionAbout_this_software")
+        self.actionlock_onto_current_slice = QtWidgets.QAction(MainWindow)
+        self.actionlock_onto_current_slice.setCheckable(True)
+        self.actionlock_onto_current_slice.setObjectName("actionlock_onto_current_slice")
         self.menuFiles.addAction(self.actionLoad)
         self.menuFiles.addAction(self.actionSave)
         self.menuFiles.addAction(self.actionLoad_corrections)
@@ -263,6 +273,7 @@ class Ui_MainWindow(object):
         self.menuEdit.addAction(self.actionCrop)
         self.menuEdit.addAction(self.actionNormalize)
         self.menuView.addAction(self.actionshow_markers)
+        self.menuView.addAction(self.actionlock_onto_current_slice)
         self.menuhelp.addAction(self.actionAbout_Qt)
         self.menuhelp.addAction(self.actionAbout_this_software)
         self.menubar.addAction(self.menuFiles.menuAction())
@@ -275,6 +286,9 @@ class Ui_MainWindow(object):
         self.slice_lock.toggled['bool'].connect(self.transparency_slider.setEnabled) # type: ignore
         self.slice_lock.toggled['bool'].connect(self.slices_spinbox.setDisabled) # type: ignore
         self.slice_lock.toggled['bool'].connect(self.to_end_checkbox.setDisabled) # type: ignore
+        self.init_slice_btn.toggled['bool'].connect(self.init_slice_btn.setDisabled) # type: ignore
+        self.actionlock_onto_current_slice.toggled['bool'].connect(self.slice_lock.setChecked) # type: ignore
+        self.slice_lock.toggled['bool'].connect(self.actionlock_onto_current_slice.setChecked) # type: ignore
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
 
     def retranslateUi(self, MainWindow):
@@ -284,7 +298,6 @@ class Ui_MainWindow(object):
         self.label.setText(_translate("MainWindow", "Current slice: "))
         self.current_slice_n.setText(_translate("MainWindow", "None"))
         self.slice_lock.setText(_translate("MainWindow", " Lock onto current slice"))
-        self.slice_lock.setShortcut(_translate("MainWindow", "L"))
         self.transparency_slider.setToolTip(_translate("MainWindow", "Transparency of the locked slice"))
         self.sc_group.setTitle(_translate("MainWindow", "Simple Shift Correction"))
         self.label_x_correction.setText(_translate("MainWindow", "x:"))
@@ -299,9 +312,10 @@ class Ui_MainWindow(object):
         self.down_button.setText(_translate("MainWindow", "↓"))
         self.down_button.setShortcut(_translate("MainWindow", "Shift+Down"))
         self.groupBox_4.setTitle(_translate("MainWindow", "Matrix Correction"))
-        self.init_slice_btn.setText(_translate("MainWindow", "init. slice(s)"))
+        self.init_slice_btn.setText(_translate("MainWindow", "init for slice"))
+        self.show_ref_points.setText(_translate("MainWindow", "3 point def."))
+        self.pin_points_to_slice.setText(_translate("MainWindow", "🖈"))
         self.reset_matrix.setText(_translate("MainWindow", "reset"))
-        self.push_to_array.setText(_translate("MainWindow", "push to array"))
         self.slices_spinbox.setSuffix(_translate("MainWindow", " sl."))
         self.to_end_checkbox.setText(_translate("MainWindow", "till end"))
         self.to_end_checkbox.setShortcut(_translate("MainWindow", "Shift+E"))
@@ -317,9 +331,11 @@ class Ui_MainWindow(object):
         self.actionGet_z_scale.setText(_translate("MainWindow", "update inter-slice distance"))
         self.actionSave.setText(_translate("MainWindow", "Save HyperCube"))
         self.actionSave_corrections.setText(_translate("MainWindow", "Save corrections to json"))
-        self.actionshow_markers.setText(_translate("MainWindow", "show_dummy_markers"))
+        self.actionshow_markers.setText(_translate("MainWindow", "show dummy markers"))
         self.actionCrop.setText(_translate("MainWindow", "Crop"))
         self.actionNormalize.setText(_translate("MainWindow", "Normalize in between markers"))
         self.actionAbout_Qt.setText(_translate("MainWindow", "About Qt"))
         self.actionAbout_this_software.setText(_translate("MainWindow", "About this software"))
+        self.actionlock_onto_current_slice.setText(_translate("MainWindow", "lock onto current slice"))
+        self.actionlock_onto_current_slice.setShortcut(_translate("MainWindow", "Shift+T"))
 from pyqtgraph import ImageView
