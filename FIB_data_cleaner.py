@@ -10,6 +10,7 @@ import pyqtgraph as pg
 from ui import MainWindow
 from scipy.ndimage import affine_transform
 pg.setConfigOption('imageAxisOrder', 'row-major')
+from affine6p import estimate
 
 
 class FIBSliceCorrector(QtWidgets.QMainWindow,
@@ -33,6 +34,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.v_depth_iv.ui.menuBtn.hide()
         # simple shift (True), affine matrix (False):
         self.simple_mode = True
+        self.reset_triangle.setIcon(pg.icons.default.qicon)
 
     @classmethod
     def gen_affine_transformation_matrix(cls):
@@ -88,6 +90,8 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.simple_mode = False
 
     def switch_to_simple_shift_widget(self):
+        if self.show_ref_points.isChecked():
+            self.show_ref_points.setChecked(False)
         self.show_ref_points.setEnabled(False)
         self.reset_matrix.setEnabled(False)
         self.init_slice_btn.blockSignals(True)
@@ -98,7 +102,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.mtv.setModel(None)
         self.sc_group.setEnabled(True)
         self.simple_mode = True
-
+        
     def apply_shifts(self, shifts):
         for i in range(self.i_data.shape[0]):
             self.i_data[i] = np.roll(self.i_data[i], shifts[i, 0], axis=1)
@@ -172,6 +176,16 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.reset_matrix.pressed.connect(self.remove_at_and_reset)
         self.actionSave_corrections.setEnabled(True)
         self.actionSave_corrections.triggered.connect(self.save_corrections)
+        self.show_ref_points.toggled.connect(self.show_original_triangulation)
+        self.show_ref_points.toggled.connect(self.enable_affine_by_tripoint)
+        self.pin_points_to_slice.toggled.connect(self.enable_affine_by_triangle)
+
+    def enable_affine_by_tripoint(self, state):
+        if state:
+            self.pin_points_to_slice.setEnabled(True)
+        else:
+            self.pin_points_to_slice.setChecked(False)
+            self.pin_points_to_slice.setEnabled(False)
 
     def visual_guides(self, status):
         self.align_line_x1.setVisible(status)
@@ -220,10 +234,35 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             self.horiz_line_locked.hide()
             self.vert_line_locked.hide()
             self.update_shift_widget()
-            self.which_widget() 
+            self.which_widget()
 
     def change_locked_image_opacity(self, int_value):
         self.locked_image_item.setOpacity(int_value / 100)
+
+    def enable_affine_by_triangle(self, state):
+        for i in self.original_ref:
+            i.movable = not state
+        if state:
+            points = [(j.x(), j.y()) for j in self.original_ref]
+            self.floating_triangle = pg.PolyLineROI(positions=points,
+                                                    closed=True)
+            self.slice_iv.addItem(self.floating_triangle)
+            self.floating_triangle.sigRegionChanged.connect(self.at_from_three)
+        else:
+            self.floating_tringle.sigRegionChanged.disconnect(self.at_from_three)
+            self.slice_iv.removeItem(self.floating_triangle)
+            self.reset_triangle.setDisabled(True)
+
+    def at_from_three(self):
+        index = self.get_index_for_manipulation()
+        h_list = [tuple(h.pos()) for h in self.floating_triangle.getHandles()]
+        p_list = [tuple(p.pos()) for p in self.original_ref]
+        self.at_matrices[index]['matrix'][:] = estimate(h_list, p_list).get_matrix()
+        self.apply_affine_transformation(index)
+        model = self.at_matrices[index]["model"]
+        model.dataChanged.emit(model.index(0, 0), model.index(3, 3))
+
+        
 
     def save_cube(self):
         fn, _ = QtWidgets.QFileDialog.getSaveFileName()
@@ -349,6 +388,24 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.slice_yz = self.i_data[:, :, self.i_data.shape[2] // 2]
         self.v_depth_iv.setImage(self.slice_yz.T)
         self.h_depth_iv.setImage(self.slice_xz)
+        self.gen_original_triangulation_ref()
+
+    def gen_original_triangulation_ref(self):
+        x1 = self.i_data.shape[2] // 10
+        x2 = x1 * 9
+        y1 = self.i_data.shape[1] // 10
+        y2 = y1 * 9
+        self.original_ref = [pg.TargetItem(pos=(x1, y1)),
+                             pg.TargetItem(pos=(x2, y1)),
+                             pg.TargetItem(pos=(x2, y2))]
+
+    def show_original_triangulation(self, state):
+        if state:
+            for i in self.original_ref:
+                self.slice_iv.addItem(i)
+        else:
+            for i in self.original_ref:
+                self.slice_iv.removeItem(i)
 
     def gen_align_lines(self):
         self.roi_main = pg.RectROI(pos=(20, 20), size=(980, 480))
@@ -414,12 +471,12 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             self.i_data.shape[0] - index)
         if not self.slice_lock.isChecked():
             self.update_shift_widget()
-            self.which_widget() 
+            self.which_widget()
 
     def update_shift_widget(self):
         index = self.get_index_for_manipulation()
-        self.label_x_correction.setText('x: {}'.format(self.shifts[index][0]))
-        self.label_y_correction.setText('y: {}'.format(self.shifts[index][1]))
+        self.label_x_correction.setText(f"x: {self.shifts[index][0]}")
+        self.label_y_correction.setText(f"y: {self.shifts[index][1]}")
 
     def which_widget(self):
         index = self.get_index_for_manipulation()
@@ -436,16 +493,6 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
     def update_affine_widget(self):
         index = self.get_index_for_manipulation()
         self.mtv.setModel(self.at_matrices[index]["model"])
-    #    index = self.current_i
-    #    if self.slice_lock.isChecked():
-    #        return
-    #    if index in self.at_matrices:
-    #        if self.init_slice_btn.isChecked():
-    #            self.set_at_at_index()
-    #        else:
-    #            self.init_slice_btn.setChecked(True)
-    #    elif self.init_slice_btn.isChecked():
-    #        self.init_slice_btn.setChecked(False)
 
     def update_aspect_ratio(self):
         z_val, ok_clicked = QtWidgets.QInputDialog.getDouble(
@@ -472,8 +519,8 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         if not isinstance(index, int):
             index = self.get_index_for_manipulation()
         self.i_data[index] = affine_transform(
-            self.at_matrices[index]['initial'],
-            self.at_matrices[index]['matrix'])
+            self.at_matrices[index]['initial'].T,
+            self.at_matrices[index]['matrix']).T
         self.update_images()
 
     def shift_multi(self, strenght, axis):
