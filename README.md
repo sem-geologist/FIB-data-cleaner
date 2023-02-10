@@ -11,13 +11,13 @@ This tool is intended to be an intermediate tool in FIB data handling workflow.
 It uses `Hyperspy` to load and save data (input/output).
 The stack of images should be constructed before with Hyperspy (or ImageJ, or some SEM OEM software gives prestacked TIFF, which can be loaded directly).
 This tool provides posibilities to:
-* do simple lossles pixel-shift (`nupy.roll`) based alignment of slices
+* do simple lossless pixel-shift (`nupy.roll`) based alignment of slices
 * correct pathological "skewed"-charging effect with affine transformation
-* affine transformation can be defined by 3x3 matrix, or using 3 draggable pivot points
+* affine transformation can be defined by 3x3 matrix, or using a 3 draggable pivot points
 * can lock a single slice, make it semi-transparent and compare with other slices
 * can shift single or more selectable amount of slices simultaniously.
-* shows the views in (x,y) (y,z) and (x,z) perpendicular plains of dataset. All views are updated after any slice shift or transformation. 
-* shift instrucitons and affine transformation matric'es can be saved and loadedand applied to initial dataset from simple json file, this way the raw data can be left unmodified. Albeit saving the modified (shifted/cropped/transformed) dataset as a new file will reset shift and transformation instructions and any new shift and/or transformation definitions should be applied no more to the raw/initial dataset.
+* shows the views in (x,y) (y,z) and (x,z) perpendicular plainar views of the dataset. All views are updated after any slice shift or transformation. 
+* shift instrucitons and affine transformation matric'es can be saved and loaded and applied to the initial dataset from simple json file. This way the raw data can be left unmodified. Albeit saving the modified (shifted/cropped/transformed) dataset as a new file will reset shift and transformation instructions and any new shift and/or transformation definitions should be applied no more to the raw/initial dataset but to such new modified copy of the data.
 * has built-in simple normalisation (normalizes intensities to the ROI selected at x , y, to all z)
 
 ### Requirements
