@@ -37,7 +37,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.reset_triangle.setIcon(pg.icons.default.qicon)
 
     @classmethod
-    def gen_affine_transformation_matrix(cls):
+    def init_affine_transformation_matrix(cls):
         return np.array([[1., 0., 0.],
                          [0., 1., 0.],
                          [0., 0., 1.]],
@@ -57,7 +57,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             index_z = self.get_index_for_manipulation()
         if index_z not in self.at_matrices:
             self.at_matrices[index_z] = {
-                'matrix': self.gen_affine_transformation_matrix()}
+                'matrix': self.init_affine_transformation_matrix()}
             TransformationMatrixModel(self.at_matrices[index_z])
             self.at_matrices[index_z]['initial'] = copy(self.i_data[index_z])
             if current_flag:
@@ -149,9 +149,9 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
                 self.at_matrices[i] = {'matrix': at[i]}
                 TransformationMatrixModel(self.at_matrices[i])
                 self.at_matrices[i]['initial'] = copy(self.i_data[i])
-                self.at_matrices[i]['model'].dataChanged.connect(
-                                              self.apply_affine_transformation)
+                self.apply_affine_transformation(i)
         self.update_shift_widget()
+        self.which_widget()
         self.slice_iv.updateImage()
         self.v_depth_iv.updateImage()
         self.h_depth_iv.updateImage()
@@ -249,7 +249,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             self.slice_iv.addItem(self.floating_triangle)
             self.floating_triangle.sigRegionChanged.connect(self.at_from_three)
         else:
-            self.floating_tringle.sigRegionChanged.disconnect(self.at_from_three)
+            self.floating_triangle.sigRegionChanged.disconnect(self.at_from_three)
             self.slice_iv.removeItem(self.floating_triangle)
             self.reset_triangle.setDisabled(True)
 
@@ -261,8 +261,6 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.apply_affine_transformation(index)
         model = self.at_matrices[index]["model"]
         model.dataChanged.emit(model.index(0, 0), model.index(3, 3))
-
-        
 
     def save_cube(self):
         fn, _ = QtWidgets.QFileDialog.getSaveFileName()
