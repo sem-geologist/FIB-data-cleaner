@@ -16,9 +16,11 @@ This tool provides posibilities to:
 * affine transformation can be defined by 3x3 matrix, or using a 3 draggable pivot points
 * can lock a single slice, make it semi-transparent and compare with other slices
 * can shift single or more selectable amount of slices simultaniously.
+* PolyLine ROI tool for fast course alignment in one direction
 * shows the views in (x,y) (y,z) and (x,z) perpendicular plainar views of the dataset. All views are updated after any slice shift or transformation. 
 * shift instrucitons and affine transformation matric'es can be saved and loaded and applied to the initial dataset from simple json file. This way the raw data can be left unmodified. Albeit saving the modified (shifted/cropped/transformed) dataset as a new file will reset shift and transformation instructions and any new shift and/or transformation definitions should be applied no more to the raw/initial dataset but to such new modified copy of the data.
 * has built-in simple normalisation (normalizes intensities to the ROI selected at x , y, to all z)
+* has included QtConsole, which allows to use other Hyperspy functions.
 
 ### Requirements
 Currently this is not a stand-alone application, and requires functioning python (preferably virtual) environment (conda/mamba venv or anything similar).
