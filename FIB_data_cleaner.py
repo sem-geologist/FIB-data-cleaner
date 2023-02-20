@@ -11,6 +11,9 @@ from ui import MainWindow
 from scipy.ndimage import affine_transform
 pg.setConfigOption('imageAxisOrder', 'row-major')
 from affine6p import estimate
+from ui.CustomComponents import (ZAlignmentROI,
+                                 SpinBoxDelegate,
+                                 TransformationMatrixModel)
 
 
 class FIBSliceCorrector(QtWidgets.QMainWindow,
@@ -22,7 +25,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.at_matrices = {}  # affine transformation matrices
         delegate = SpinBoxDelegate()
         self.mtv.setItemDelegate(delegate)
-        self.actionLoad.triggered.connect(self.load_cube)
+        self.actionLoad.triggered.connect(self.load_single_file)
         self.actionAbout_Qt.triggered.connect(self.show_about_qt)
         self.actionAbout_this_software.triggered.connect(self.show_about)
         self.v_depth_iv.ui.roiBtn.hide()
@@ -35,6 +38,11 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         # simple shift (True), affine matrix (False):
         self.simple_mode = True
         self.reset_triangle.setIcon(pg.icons.default.qicon)
+        kernel = self.console.kernel_manager.kernel
+        kernel.shell.push(dict(np=np, pg=pg, hs=hs, app=self))
+        self.splitter_4.addWidget(self.console)
+        self.console.execute("whos")
+        self.console.setVisible(False)
 
     @classmethod
     def init_affine_transformation_matrix(cls):
@@ -102,7 +110,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.mtv.setModel(None)
         self.sc_group.setEnabled(True)
         self.simple_mode = True
-        
+
     def apply_shifts(self, shifts):
         for i in range(self.i_data.shape[0]):
             self.i_data[i] = np.roll(self.i_data[i], shifts[i, 0], axis=1)
@@ -304,11 +312,17 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.v_depth_iv.updateImage()
         self.h_depth_iv.updateImage()
 
-    def load_cube(self):
+    def load_single_file(self):
         fn, _ = QtWidgets.QFileDialog.getOpenFileName()
         if fn is None or fn == "":
             return
-        # clean up previous
+        self.setCursor(QtCore.Qt.WaitCursor)
+        self.unload_cube()
+        signal = hs.load(fn)
+        self.load_hspy_signal(signal)
+        self.unsetCursor()
+
+    def unload_cube(self):
         if self.actionlock_onto_current_slice.isChecked():
             self.actionlock_onto_current_slice.setChecked(False)
         self.cube = None
@@ -321,9 +335,11 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.h_depth_iv.clear()
         self.at_matrices = {}  # reset transformation matrices
         gc.collect()
-        #
-        self.setWindowTitle(path.basename(fn))
-        self.cube = hs.load(fn)
+
+    def load_hspy_signal(self, signal):
+        self.unload_cube()
+        self.setWindowTitle(signal.metadata.General.original_filename)
+        self.cube = signal
         self.i_data = self.cube.data
         self.shifts = np.zeros(shape=(self.i_data.shape[0], 2))
         self.shifts = self.shifts.astype(np.int32)
@@ -341,9 +357,51 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             self.actionCrop.setEnabled(True)
             self.actionCrop.triggered.connect(self.crop_cube)
             self.actionNormalize.triggered.connect(self.normalize)
+            self.actionVertical_shift_guide.toggled.connect(self.graphic_v_guide)
+            self.actionHorizontal_shift_guide.toggled.connect(self.graphic_h_guide)
             self.slices_spinbox.valueChanged.connect(
                 self.update_index)
+            self.v_roi_line_btn = QtWidgets.QPushButton("aligning to Polyline ROI")
+            self.v_depth_iv.ui.gridLayout.addWidget(self.v_roi_line_btn)
+            self.v_roi_line_btn.setVisible(False)
+            self.v_roi_line_btn.pressed.connect(self.align_to_v_guide_roi)
+            self.h_roi_line_btn = QtWidgets.QPushButton("aligning to Polyline ROI")
+            self.h_depth_iv.ui.gridLayout.addWidget(self.h_roi_line_btn)
+            self.h_roi_line_btn.setVisible(False)
+            self.h_roi_line_btn.pressed.connect(self.align_to_h_guide_roi)
             self.first_time_load = False
+        
+    def graphic_v_guide(self, state):
+        self.v_roi_line_btn.setVisible(state)
+        if state:
+            self.v_guide_roi = ZAlignmentROI(self.i_data, orientation="h")
+            self.v_depth_iv.addItem(self.v_guide_roi)
+        else:
+            self.v_depth_iv.removeItem(self.v_guide_roi)
+            self.v_guide_roi = None
+
+    def align_to_v_guide_roi(self):
+        shifts = self.v_guide_roi.getShifts()
+        self.actionVertical_shift_guide.setChecked(False)
+        self.apply_shifts(shifts)
+        self.shifts += shifts
+        self.update_images()
+
+    def graphic_h_guide(self, state):
+        self.h_roi_line_btn.setVisible(state)
+        if state:
+            self.h_guide_roi = ZAlignmentROI(self.i_data, orientation="v")
+            self.h_depth_iv.addItem(self.h_guide_roi)
+        else:
+            self.h_depth_iv.removeItem(self.h_guide_roi)
+            self.h_guide_roi = None
+
+    def align_to_h_guide_roi(self):
+        shifts = self.h_guide_roi.getShifts()
+        self.actionHorizontal_shift_guide.setChecked(False)
+        self.apply_shifts(shifts)
+        self.shifts += shifts
+        self.update_images()
 
     def setup_slicers(self):
         if self.first_time_load:
@@ -493,17 +551,20 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.mtv.setModel(self.at_matrices[index]["model"])
 
     def update_aspect_ratio(self):
+        init_val = self.cube.axes_manager[0].scale
         z_val, ok_clicked = QtWidgets.QInputDialog.getDouble(
-            self, "Get inter-slice interval",
-            "distance in-between slices (in nm):", 10.05,
-            0, 100,
+            self, 
+            "set interval size", "set inter-slice length \n(changes the aspect ratio for (z,y) and (x,z) plots) \n the distance in-between slices (in nm):",
+            init_val,
+            0, 500,
             10)
         if ok_clicked:
-            self.cube.axes_manager[0].scale = z_val
             self.cube.axes_manager[0].units = 'nm'
-            x_val = self.cube.axes_manager[1].scale
-            self.v_depth_iv.getView().setAspectLocked(True, ratio=z_val/x_val)
-            self.h_depth_iv.getView().setAspectLocked(True, ratio=x_val/z_val)
+            self.cube.axes_manager[0].scale = z_val
+            z_val = self.cube.axes_manager[0].scale_as_quantity
+            x_val = self.cube.axes_manager[1].scale_as_quantity
+            self.v_depth_iv.getView().setAspectLocked(True, ratio=float(z_val/x_val))
+            self.h_depth_iv.getView().setAspectLocked(True, ratio=float(x_val/z_val))
 
     def update_images(self):
         self.slice_iv.updateImage()
@@ -564,108 +625,10 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
                                     "Created by Petras Jokubauskas.\n"
                                     "This is free open source software "
                                     "licensed under GPLv3.\n\n"
-                                    f"Current PyQt5 version: {QtCore.PYQT_VERSION_STR}")
-
-
-class TransformationMatrixModel(QtCore.QAbstractTableModel):
-    def __init__(self, dict_node):
-        QtCore.QAbstractTableModel.__init__(self)
-        dict_node['model'] = self
-        self.data_view = dict_node['matrix'].view()
-
-    def rowCount(self, *args):
-        return 3
-
-    def columnCount(self, *args):
-        return 3
-
-    def headerData(self, section, orientation, role):
-        if role == QtCore.Qt.DisplayRole:
-            if orientation == QtCore.Qt.Horizontal:
-                if section == 0:
-                    return '(x)'
-                if section == 1:
-                    return '(y)'
-                if section == 2:
-                    return 't'
-            if orientation == QtCore.Qt.Vertical:
-                if section == 0:
-                    return 'W'
-                elif section == 1:
-                    return 'H'
-                elif section == 2:
-                    return '(z)'
-
-    def data(self, index, role):
-        if not index.isValid():
-            return False
-        if role == QtCore.Qt.DisplayRole or role == QtCore.Qt.EditRole:
-            return str(self.data_view[index.row()][index.column()])
-
-        if role == QtCore.Qt.ToolTipRole:
-            if index.column() == 2:
-                if index.row() == 0:
-                    return 'x'
-                elif index.row() == 1:
-                    return 'y'
-            elif index.column() == 0:
-                if index.row() == 0:
-                    return 'width scaling/rotation(cos(theta))'
-                elif index.row() == 1:
-                    return 'rotation -sin(theta)/skew in y direction'
-            elif index.column() == 1:
-                if index.row() == 0:
-                    return 'rotation sin(theta)/skew in x direction'
-                elif index.row() == 1:
-                    return 'height scaling/rotation(cos(theta))'
-        if role == QtCore.Qt.BackgroundColorRole:
-            if index.row() == index.column():
-                return QtGui.QColor(23, 147, 100)
-
-    def flags(self, index):
-        if index.isValid():
-            if index.row() == 2:
-                return QtCore.Qt.ItemIsEnabled
-            return QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsEditable
-
-    def setData(self, index, value, role):
-        if not index.isValid():
-            return False
-        if role == QtCore.Qt.EditRole:
-            self.data_view[index.row()][index.column()] = float(value)
-            self.dataChanged.emit(index, index)
-            return True
-
-
-class SpinBoxDelegate(QtWidgets.QStyledItemDelegate):
-    def __init__(self, parent=None):
-        QtWidgets.QStyledItemDelegate.__init__(self, parent)
-
-    def createEditor(self, parent, option, index):
-        editor = QtWidgets.QDoubleSpinBox(parent)
-        editor.setFrame(False)
-        if index.column() < 2:
-            editor.setMinimum(-10)
-            editor.setMaximum(10)
-            editor.setSingleStep(0.001)
-            editor.setDecimals(3)
-        else:
-            editor.setMinimum(-1000)
-            editor.setMaximum(1000)
-            editor.setSingleStep(0.1)
-            editor.setDecimals(2)
-        return editor
-
-    def setEditorData(self, spinBox, index):
-        value = index.model().data(index, QtCore.Qt.EditRole)
-        spinBox.setValue(float(value))
-
-    def setModelData(self, editor, model, index):
-        value = editor.value()
-        model.setData(index, value, QtCore.Qt.EditRole)
-
-    def updateEditorGeometry(self, editor, option, index):
-        editor.setGeometry(option.rect)
+                                    "Library versions:\n"
+                                    f" PyQt5: {QtCore.PYQT_VERSION_STR}\n"
+                                    f" PyQtGraph: {pg.__version__}\n"
+                                    f" HypersPy: {hs.__version__}\n")
 
 
 def main():
