@@ -51,6 +51,17 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
                          [0., 0., 1.]],
                         dtype=np.float64)
 
+    def get_empty_slice(self):
+        if self.i_data is None:
+            raise ValueError("no data is loaded")
+        else:
+            return [slice(None)] * self.i_data.ndim
+
+    def get_frame_slice(self, i_frame):
+        i_slice = self.get_empty_slice()
+        i_slice[self.i_depth] = i_frame
+        return (*i_slice,)
+
     def get_index_for_manipulation(self):
         if self.slice_lock.isChecked():
             return self.locked_index
@@ -67,13 +78,15 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             self.at_matrices[index_z] = {
                 'matrix': self.init_affine_transformation_matrix()}
             TransformationMatrixModel(self.at_matrices[index_z])
-            self.at_matrices[index_z]['initial'] = copy(self.i_data[index_z])
+            i_slice = self.get_frame_slice(index_z)
+            self.at_matrices[index_z]['initial'] = copy(self.i_data[i_slice])
             if current_flag:
                 self.switch_to_matrix_correction_widget()
 
     def remove_at_and_reset(self):
         i = self.get_index_for_manipulation()
-        self.i_data[i] = self.at_matrices[i]['initial']
+        i_slice = self.get_frame_slice(i)
+        self.i_data[i_slice] = self.at_matrices[i]['initial']
         self.at_matrices[i]['model'].dataChanged.disconnect(
             self.apply_affine_transformation)
         self.mtv.setModel(None)
@@ -112,9 +125,18 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.simple_mode = True
 
     def apply_shifts(self, shifts):
-        for i in range(self.i_data.shape[0]):
-            self.i_data[i] = np.roll(self.i_data[i], shifts[i, 0], axis=1)
-            self.i_data[i] = np.roll(self.i_data[i], shifts[i, 1], axis=0)
+        i_slice = self.get_empty_slice()
+        for i in range(self.i_data.shape[self.i_depth]):
+            i_slice[self.i_depth] = i
+            self.i_data[(*i_slice,)] = np.roll(self.i_data[(*i_slice,)],
+                                               shifts[i],
+                                               axis=(1, 0))
+            #self.i_data[(*i_slice,)] = np.roll(self.i_data[(*i_slice,)],
+            #                                   shifts[i, 0],
+            #                                   axis=1)
+            #self.i_data[i_slice] = np.roll(self.i_data[(*i_slice,)],
+            #                               shifts[i, 1],
+            #                               axis=0)
 
     def save_corrections(self):
         at_jsonized = {str(i): self.at_matrices[i]['matrix'].tolist()
@@ -133,6 +155,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             json.dump(jsonable_dict, fp)
 
     def load_shifts(self):
+        """load and apply pixel shifts"""
         fn, ft = QtWidgets.QFileDialog.getOpenFileName(
             self, 'select correction file', '../',
             "Numpy files (*.npy);; Json correction (*.json)")
@@ -151,12 +174,16 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             if 'roi' in corrections:
                 self.roi_main.setPos(corrections['roi']['pos'])
                 self.roi_main.setSize(corrections['roi']['size'])
-            at = {int(i): np.asarray(corrections['at'][i], dtype=np.float64)
+            at = {int(i): np.asarray(corrections['at'][i],
+                                     dtype=np.float64)
                   for i in corrections['at']}
+            i_slice = self.get_empty_slice()
             for i in at:
                 self.at_matrices[i] = {'matrix': at[i]}
                 TransformationMatrixModel(self.at_matrices[i])
-                self.at_matrices[i]['initial'] = copy(self.i_data[i])
+                i_slice[self.i_depth] = i
+                self.at_matrices[i]['initial'] = copy(
+                    self.i_data[(*i_slice,)])
                 self.apply_affine_transformation(i)
         self.update_shift_widget()
         self.which_widget()
@@ -204,21 +231,39 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
 
     def change_vertical_slice(self):
         pos = int(round(self.v_slice_line.pos()[0]))
-        self.slice_yz = self.i_data[:, :, pos]
-        self.v_depth_iv.setImage(self.slice_yz.T, autoRange=False,
-                                 autoHistogramRange=False, autoLevels=False)
+        i_slice = self.get_empty_slice()
+        i_slice[self.i_width] = pos
+        self.slice_yz = self.i_data[(*i_slice,)]
+        if self.i_depth < self.i_height:
+            i_z, i_y = 0, 1
+        else:
+            i_z, i_y = 1, 0
+        self.v_depth_iv.setImage(self.slice_yz,
+                                 axes={'x': i_z, 'y': i_y},
+                                 autoRange=False,
+                                 autoHistogramRange=False,
+                                 autoLevels=False)
 
     def change_horizontal_slice(self):
         pos = int(round(self.h_slice_line.pos()[1]))
-        self.slice_xz = self.i_data[:, pos, :]
-        self.h_depth_iv.setImage(self.slice_xz, autoRange=False,
-                                 autoHistogramRange=False, autoLevels=False)
+        i_slice = self.get_empty_slice()
+        i_slice[self.i_height] = pos
+        self.slice_xz = self.i_data[(*i_slice,)]
+        if self.i_depth < self.i_width:
+            i_z, i_x = 0, 1
+        else:
+            i_z, i_x = 1, 0
+        self.h_depth_iv.setImage(self.slice_xz,
+                                 axes={'x': i_x, 'y': i_z},
+                                 autoRange=False,
+                                 autoHistogramRange=False,
+                                 autoLevels=False)
 
     def lock_current_index(self, state):
         if state:
             self.locked_index = self.current_i
-            self.locked_image_item = pg.ImageItem(
-                                        self.i_data[self.locked_index, :, :])
+            i_slice = self.get_frame_slice(self.locked_index)
+            self.locked_image_item = pg.ImageItem(self.i_data[i_slice])
             self.slice_iv.addItem(self.locked_image_item)
             self.slice_lock.setText(
                 ' locked at index {}'.format(self.locked_index))
@@ -257,7 +302,8 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             self.slice_iv.addItem(self.floating_triangle)
             self.floating_triangle.sigRegionChanged.connect(self.at_from_three)
         else:
-            self.floating_triangle.sigRegionChanged.disconnect(self.at_from_three)
+            self.floating_triangle.sigRegionChanged.disconnect(
+                self.at_from_three)
             self.slice_iv.removeItem(self.floating_triangle)
             self.reset_triangle.setDisabled(True)
 
@@ -279,20 +325,22 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
     def crop_cube(self):
         if self.actionlock_onto_current_slice.isChecked():
             self.actionlock_onto_current_slice.setChecked(False)
-        self.cube.crop(1, start=int(self.align_line_x1.pos()[0]),
+        self.cube.crop(self.i_height, start=int(self.align_line_x1.pos()[0]),
                        end=int(self.align_line_x2.pos()[0]))
-        self.cube.crop(2, start=int(self.align_line_y1.pos()[1]),
+        self.cube.crop(self.i_width, start=int(self.align_line_y1.pos()[1]),
                        end=int(self.align_line_y2.pos()[1]))
         self.i_data = self.cube.data
-        self.shifts = np.zeros(shape=(self.i_data.shape[0], 2),
+        self.shifts = np.zeros(shape=(self.i_data.shape[self.i_depth], 2),
                                dtype=np.int32)
         self.at_matrices = {}
         self.switch_to_simple_shift_widget()
         self.align_line_x1.setPos(0)
-        self.align_line_x2.setPos(self.i_data.shape[2])
+        self.align_line_x2.setPos(self.i_data.shape[self.i_width])
         self.align_line_y1.setPos(0)
-        self.align_line_y2.setPos(self.i_data.shape[1])
-        self.slice_iv.setImage(self.i_data)
+        self.align_line_y2.setPos(self.i_data.shape[self.i_height])
+        self.slice_iv.setImage(self.i_data, axes={"t": self.i_depth,
+                                                  "x": self.i_width,
+                                                  "y": self.i_height})
         self.setup_slicers()
 
     def normalize(self):
@@ -300,14 +348,21 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         x2 = int(self.align_line_x2.pos()[0])
         y1 = int(self.align_line_y1.pos()[1])
         y2 = int(self.align_line_y2.pos()[1])
-        norma_arr = np.mean(self.i_data[:, y1:y2, x1:x2], axis=(1, 2))
+
+        i_slice = self.get_empty_slice()
+        i_slice[self.i_width] = slice(x1, x2)
+        i_slice[self.i_height] = slice(y1, y2)
+        norma_arr = np.mean(self.i_data[(*i_slice,)],
+                            axis=(self.i_height, self.i_width))
         min_arr = int(norma_arr.min())
         normalization_arr = norma_arr - min_arr
-        for i in range(self.i_data.shape[0]):
-            self.i_data[i] = np.where(
-                self.i_data[i] < int(normalization_arr[i] - 1),
-                self.i_data[i],
-                self.i_data[i] - int(normalization_arr[i] - 1))
+        i_slice = self.get_empty_slice()
+        for i in range(self.i_data.shape[self.i_depth]):
+            i_slice = self.get_frame_slice(i)
+            self.i_data[i_slice] = np.where(
+                self.i_data[i_slice] < int(normalization_arr[i] - 1),
+                self.i_data[i_slice],
+                self.i_data[i_slice] - int(normalization_arr[i] - 1))
         self.slice_iv.updateImage()
         self.v_depth_iv.updateImage()
         self.h_depth_iv.updateImage()
@@ -317,12 +372,26 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         if fn is None or fn == "":
             return
         self.setCursor(QtCore.Qt.WaitCursor)
-        self.unload_cube()
+        self.unload_file()
         signal = hs.load(fn)
+        if type(signal) == list:
+            str_signals = [str(i) for i in signal]
+            selection = QtWidgets.QInputDialog.getItem(
+                self,
+                "Signal",
+                "Few signals were found inside the file;\n"
+                "please, choose one to proceed further", 
+                str_signals)
+            if selection[1]:
+                index = str_signals.index(selection[0])
+                signal = signal[index]
+            else:
+                self.unsetCursor()
+                return
         self.load_hspy_signal(signal)
         self.unsetCursor()
 
-    def unload_cube(self):
+    def unload_file(self):
         if self.actionlock_onto_current_slice.isChecked():
             self.actionlock_onto_current_slice.setChecked(False)
         self.cube = None
@@ -334,16 +403,34 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.v_depth_iv.clear()
         self.h_depth_iv.clear()
         self.at_matrices = {}  # reset transformation matrices
+        self.actionVertical_shift_guide.setChecked(False)
+        self.actionHorizontal_shift_guide.setChecked(False)
         gc.collect()
 
+    def set_index_by_name(self, hspy_sig):
+        hd = hspy_sig.axes_manager.as_dictionary()
+        n_axes = len(hd)
+        for i in range(n_axes):
+            if hspy_sig.axes_manager[i].name == 'width':
+                self.i_width = hspy_sig.axes_manager[i].index_in_array
+            elif hspy_sig.axes_manager[i].name == 'height':
+                self.i_height = hspy_sig.axes_manager[i].index_in_array
+            elif n_axes == 3:
+                self.i_depth = hspy_sig.axes_manager[i].index_in_array
+            else:
+                raise TypeError("data with more than 3 dimensions currently not supported")
+
     def load_hspy_signal(self, signal):
-        self.unload_cube()
+        self.unload_file()
         self.setWindowTitle(signal.metadata.General.original_filename)
         self.cube = signal
+        self.set_index_by_name(signal)
         self.i_data = self.cube.data
-        self.shifts = np.zeros(shape=(self.i_data.shape[0], 2))
+        self.shifts = np.zeros(shape=(self.i_data.shape[self.i_depth], 2))
         self.shifts = self.shifts.astype(np.int32)
-        self.slice_iv.setImage(self.i_data)
+        self.slice_iv.setImage(self.i_data, axes={'t': self.i_depth,
+                                                  'x': self.i_width,
+                                                  'y': self.i_height})
         self.current_i = self.slice_iv.currentIndex
         self.current_slice_n.setText(str(self.current_i))
         self.main_image_item = self.slice_iv.getImageItem()
@@ -374,7 +461,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
     def graphic_v_guide(self, state):
         self.v_roi_line_btn.setVisible(state)
         if state:
-            self.v_guide_roi = ZAlignmentROI(self.i_data, orientation="h")
+            self.v_guide_roi = ZAlignmentROI(self, orientation="h")
             self.v_depth_iv.addItem(self.v_guide_roi)
         else:
             self.v_depth_iv.removeItem(self.v_guide_roi)
@@ -390,7 +477,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
     def graphic_h_guide(self, state):
         self.h_roi_line_btn.setVisible(state)
         if state:
-            self.h_guide_roi = ZAlignmentROI(self.i_data, orientation="v")
+            self.h_guide_roi = ZAlignmentROI(self, orientation="v")
             self.h_depth_iv.addItem(self.h_guide_roi)
         else:
             self.h_depth_iv.removeItem(self.h_guide_roi)
@@ -404,6 +491,8 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.update_images()
 
     def setup_slicers(self):
+        v_bound = self.i_data.shape[self.i_width]
+        h_bound = self.i_data.shape[self.i_height]
         if self.first_time_load:
             self.horiz_line = pg.InfiniteLine(pos=0, angle=0,
                                               movable=False, pen='g')
@@ -428,28 +517,43 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             self.v_depth_iv.addItem(self.vert_line)
             self.v_depth_iv.addItem(self.vert_line_2)
             self.v_slice_line = pg.InfiniteLine(
-                pos=self.i_data.shape[2] // 2, movable=True,
-                pen='b', bounds=[0, self.i_data.shape[2] - 1])
+                pos=v_bound // 2, movable=True,
+                pen='b', bounds=[0, v_bound - 1])
             self.h_slice_line = pg.InfiniteLine(
-                pos=self.i_data.shape[1] // 2, angle=0,
-                movable=True, pen='b', bounds=[0, self.i_data.shape[1] - 1])
+                pos=h_bound // 2, angle=0,
+                movable=True, pen='b',
+                bounds=[0, h_bound - 1])
             self.slice_iv.addItem(self.v_slice_line)
             self.slice_iv.addItem(self.h_slice_line)
         else:
-            self.v_slice_line.setPos(self.i_data.shape[2] // 2)
-            self.v_slice_line.setBounds([0, self.i_data.shape[2] - 1])
-            self.h_slice_line.setPos(self.i_data.shape[1] // 2)
-            self.h_slice_line.setBounds([0, self.i_data.shape[1] - 1])
-        self.slice_xz = self.i_data[:, self.i_data.shape[1] // 2, :]
-        self.slice_yz = self.i_data[:, :, self.i_data.shape[2] // 2]
-        self.v_depth_iv.setImage(self.slice_yz.T)
-        self.h_depth_iv.setImage(self.slice_xz)
+            self.v_slice_line.setPos(v_bound // 2)
+            self.v_slice_line.setBounds([0, v_bound - 1])
+            self.h_slice_line.setPos(h_bound // 2)
+            self.h_slice_line.setBounds([0, h_bound - 1])
+        xz_slice = self.get_empty_slice()
+        xz_slice[self.i_height] = h_bound // 2
+        self.slice_xz = self.i_data[(*xz_slice,)]
+        yz_slice = self.get_empty_slice()
+        yz_slice[self.i_width] = v_bound // 2
+        self.slice_yz = self.i_data[(*yz_slice,)]
+        if self.i_depth < self.i_height:
+            i_z, i_y = 0, 1
+        else:
+            i_z, i_y = 1, 0
+        self.v_depth_iv.setImage(self.slice_yz,
+                                 axes={'x': i_z, 'y': i_y})
+        if self.i_depth < self.i_width:
+            i_z, i_x = 0, 1
+        else:
+            i_z, i_x = 1, 0
+        self.h_depth_iv.setImage(self.slice_xz,
+                                 axes={'x': i_x, 'y': i_z})
         self.gen_original_triangulation_ref()
 
     def gen_original_triangulation_ref(self):
-        x1 = self.i_data.shape[2] // 10
+        x1 = self.i_data.shape[self.i_width] // 10
         x2 = x1 * 9
-        y1 = self.i_data.shape[1] // 10
+        y1 = self.i_data.shape[self.i_height] // 10
         y2 = y1 * 9
         self.original_ref = [pg.TargetItem(pos=(x1, y1)),
                              pg.TargetItem(pos=(x2, y1)),
@@ -524,7 +628,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.vert_line.setPos(index)
         self.vert_line_2.setPos(index + strenght)
         self.slices_spinbox.setMaximum(
-            self.i_data.shape[0] - index)
+            self.i_data.shape[self.i_depth] - index)
         if not self.slice_lock.isChecked():
             self.update_shift_widget()
             self.which_widget()
@@ -577,7 +681,8 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         """scipy.ndimage.affine_transform"""
         if not isinstance(index, int):
             index = self.get_index_for_manipulation()
-        self.i_data[index] = affine_transform(
+        i_slice = self.get_frame_slice(index)
+        self.i_data[i_slice] = affine_transform(
             self.at_matrices[index]['initial'].T,
             self.at_matrices[index]['matrix']).T
         self.update_images()
@@ -589,11 +694,12 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         else:
             index = self.current_i
             if self.to_end_checkbox.isChecked():
-                end = self.i_data.shape[0]
+                end = self.i_data.shape[self.i_depth]
             else:
                 end = index + self.slices_spinbox.value()
         for i in range(index, end):
-            self.i_data[i] = np.roll(self.i_data[i], strenght, axis=axis)
+            self.i_data[self.get_frame_slice(i)] = np.roll(
+                self.i_data[self.get_frame_slice(i)], strenght, axis=axis)
         if axis == 1:
             self.shifts[index:end, 0] += strenght
         elif axis == 0:

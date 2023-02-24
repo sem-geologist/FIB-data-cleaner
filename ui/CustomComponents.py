@@ -1,8 +1,16 @@
 from PyQt5 import QtCore, QtGui, QtWidgets
 from pyqtgraph.graphicsItems.ROI import Handle, PolyLineROI
-from pyqtgraph import Point
+from pyqtgraph import Point, ImageView
 import numpy as np
 
+# this class can be eliminated when fix will be relesead with pyqtgraph
+class FixedImageView(ImageView):
+    def nframes(self):
+        if self.image is None:
+            return 0
+        elif self.axes['t'] is not None:
+            return self.image.shape[self.axes['t']]
+        return 1
 
 class TransformationMatrixModel(QtCore.QAbstractTableModel):
     def __init__(self, dict_node):
@@ -106,15 +114,15 @@ class SpinBoxDelegate(QtWidgets.QStyledItemDelegate):
 
 
 class ZAlignmentROI(PolyLineROI):
-    def __init__(self, data_cube, orientation="h"):
+    def __init__(self, app, orientation="h"):
         self.orientation = orientation
-        self.data_cube = data_cube
+        self.data_cube = app.i_data
         if orientation == "h":
-            self.i_l_axis = 0  # lenght axis index (Z axis)
-            self.i_s_axis = 1  # shift axis index
+            self.i_l_axis = app.i_depth  # lenght axis index (Z axis)
+            self.i_s_axis = app.i_height  # shift axis index
         elif orientation == "v":
-            self.i_l_axis = 0
-            self.i_s_axis = 2
+            self.i_l_axis = app.i_depth
+            self.i_s_axis = app.i_width
         else:
             raise ValueError(
                 "orientation kwrd accepts either 'h' or 'v'")

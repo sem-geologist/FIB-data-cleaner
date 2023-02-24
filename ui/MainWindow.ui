@@ -55,7 +55,7 @@
               <property name="orientation">
                <enum>Qt::Vertical</enum>
               </property>
-              <widget class="ImageView" name="slice_iv"/>
+              <widget class="FixedImageView" name="slice_iv"/>
               <widget class="QWidget" name="matrix_widget" native="true">
                <layout class="QVBoxLayout" name="verticalLayout_6">
                 <item>
@@ -760,6 +760,11 @@
    <extends>QWidget</extends>
    <header>.Console</header>
    <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>FixedImageView</class>
+   <extends>QGraphicsView</extends>
+   <header>.CustomComponents</header>
   </customwidget>
  </customwidgets>
  <resources/>

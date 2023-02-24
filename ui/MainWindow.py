@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'ui/MainWindow.ui'
+# Form implementation generated from reading ui file 'MainWindow.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.9
 #
@@ -40,7 +40,7 @@ class Ui_MainWindow(object):
         self.splitter_3 = QtWidgets.QSplitter(self.groupBox)
         self.splitter_3.setOrientation(QtCore.Qt.Vertical)
         self.splitter_3.setObjectName("splitter_3")
-        self.slice_iv = ImageView(self.splitter_3)
+        self.slice_iv = FixedImageView(self.splitter_3)
         self.slice_iv.setObjectName("slice_iv")
         self.matrix_widget = QtWidgets.QWidget(self.splitter_3)
         self.matrix_widget.setObjectName("matrix_widget")
@@ -391,4 +391,5 @@ class Ui_MainWindow(object):
         self.actionshow_python_console.setText(_translate("MainWindow", "Jupyter console"))
         self.actionshow_python_console.setShortcut(_translate("MainWindow", "Ctrl+Alt+C"))
 from .Console import JupyterConsoleWidget
+from .CustomComponents import FixedImageView
 from pyqtgraph import ImageView
