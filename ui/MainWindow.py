@@ -344,7 +344,6 @@ class Ui_MainWindow(object):
         self.label.setText(_translate("MainWindow", "Current slice: "))
         self.current_slice_n.setText(_translate("MainWindow", "None"))
         self.slice_lock.setText(_translate("MainWindow", " Lock onto current slice"))
-        self.slice_lock.setShortcut(_translate("MainWindow", "Esc"))
         self.transparency_slider.setToolTip(_translate("MainWindow", "Transparency of the locked slice"))
         self.sc_group.setTitle(_translate("MainWindow", "Simple Shift Correction"))
         self.label_x_correction.setText(_translate("MainWindow", "x:"))

@@ -26,13 +26,12 @@ This tool provides posibilities to:
 Currently this is not a stand-alone application, and requires functioning python (preferably virtual) environment (conda/mamba venv or anything similar).
 * GUI is based on `PyQt5` and for fast Graphical interaction uses `pyqtgraph` library.
 * Requires `hyperspy` to load and save datasets.
-* currently uses `scipy.ndimage` for affine transformations
-* uses `affine6p` library for calculation of transformation matrix from sets of 3 original and moved points.
+* requires `opencv` for affine transformations and calculation of transformation matrix from sets of 3 original and moved points.
 
-When having a working hyperspy environmet it is easy to meet above requiriments by `conda install` or `pip install` the `pyqtgraph` library, and `pip install` `affine6p`.
+When having a working hyperspy environmet it is easy to meet above requiriments by `conda install` or `pip install` the `pyqtgraph` library, and `pip install` `opencv-contrib-python-headless`.
 
 ### Future considerations:
 * Hyperspy is heavy, loading and saving could use `RossetaSciIO`, however Hyperspy loading and saving of files currently is much more easier.
-* scipy.ndimage affine_transform is increadibly slow and live interaction is painful to use. 
+* ~~scipy.ndimage affine_transform is increadibly slow and live interaction is painful to use.~~
 * `opencv` could provide faster affine transform, and it has some interesting and useful filters (i.e. Bilateral), which could come handy with dealin with noisy FIB data.
 * pyqtgraph has some interesting 3D capabilities and it is worth to explore.

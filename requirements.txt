@@ -2,3 +2,4 @@ PyQt5>=5.12
 hyperspy
 pyqtgraph
 qtconsole
+opencv-contrib-python-headless

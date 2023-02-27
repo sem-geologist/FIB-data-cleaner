@@ -8,9 +8,12 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 import hyperspy.api as hs
 import pyqtgraph as pg
 from ui import MainWindow
-from scipy.ndimage import affine_transform
+#from scipy.ndimage import affine_transform
 pg.setConfigOption('imageAxisOrder', 'row-major')
-from affine6p import estimate
+from cv2 import (getAffineTransform,
+                 warpAffine,
+                 INTER_NEAREST,
+                 INTER_CUBIC)
 from ui.CustomComponents import (ZAlignmentROI,
                                  SpinBoxDelegate,
                                  TransformationMatrixModel)
@@ -49,7 +52,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         return np.array([[1., 0., 0.],
                          [0., 1., 0.],
                          [0., 0., 1.]],
-                        dtype=np.float64)
+                        dtype=np.float32)
 
     def get_empty_slice(self):
         if self.i_data is None:
@@ -131,12 +134,6 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             self.i_data[(*i_slice,)] = np.roll(self.i_data[(*i_slice,)],
                                                shifts[i],
                                                axis=(1, 0))
-            #self.i_data[(*i_slice,)] = np.roll(self.i_data[(*i_slice,)],
-            #                                   shifts[i, 0],
-            #                                   axis=1)
-            #self.i_data[i_slice] = np.roll(self.i_data[(*i_slice,)],
-            #                               shifts[i, 1],
-            #                               axis=0)
 
     def save_corrections(self):
         at_jsonized = {str(i): self.at_matrices[i]['matrix'].tolist()
@@ -309,12 +306,18 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
 
     def at_from_three(self):
         index = self.get_index_for_manipulation()
-        h_list = [tuple(h.pos()) for h in self.floating_triangle.getHandles()]
-        p_list = [tuple(p.pos()) for p in self.original_ref]
-        self.at_matrices[index]['matrix'][:] = estimate(h_list, p_list).get_matrix()
-        self.apply_affine_transformation(index)
+        h_list = np.array(
+            [tuple(h.pos()) for h in self.floating_triangle.getHandles()],
+            dtype=np.float32)
+        p_list = np.array([tuple(p.pos()) for p in self.original_ref],
+                          dtype=np.float32)
+        self.at_matrices[index]['matrix'][:2] = getAffineTransform(p_list,
+                                                                   h_list)
+        self.apply_affine_transformation(index, fast=True)
         model = self.at_matrices[index]["model"]
-        model.dataChanged.emit(model.index(0, 0), model.index(3, 3))
+        for i in range(2):
+            for j in range(3):
+                self.mtv.update(model.index(i, j))
 
     def save_cube(self):
         fn, _ = QtWidgets.QFileDialog.getSaveFileName()
@@ -677,14 +680,21 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         if self.slice_lock.isChecked():
             self.locked_image_item.updateImage()
 
-    def apply_affine_transformation(self, index=None):
+    def apply_affine_transformation(self, index=None, fast=False):
         """scipy.ndimage.affine_transform"""
+        if fast:
+            interp_mode = INTER_NEAREST
+        else:
+            interp_mode = INTER_CUBIC
         if not isinstance(index, int):
             index = self.get_index_for_manipulation()
         i_slice = self.get_frame_slice(index)
-        self.i_data[i_slice] = affine_transform(
-            self.at_matrices[index]['initial'].T,
-            self.at_matrices[index]['matrix']).T
+        self.i_data[i_slice] = warpAffine(
+            self.at_matrices[index]['initial'],
+            self.at_matrices[index]['matrix'][:2],
+            (self.i_data.shape[self.i_width],
+             self.i_data.shape[self.i_height]),
+            interp_mode)
         self.update_images()
 
     def shift_multi(self, strenght, axis):
