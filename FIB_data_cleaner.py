@@ -7,6 +7,7 @@ from copy import copy
 from PyQt5 import QtCore, QtGui, QtWidgets
 import hyperspy.api as hs
 import pyqtgraph as pg
+#from hyperspy.misc.utils import DictionaryTreeBrowser
 from ui import MainWindow
 #from scipy.ndimage import affine_transform
 pg.setConfigOption('imageAxisOrder', 'row-major')
@@ -14,9 +15,15 @@ from cv2 import (getAffineTransform,
                  warpAffine,
                  INTER_NEAREST,
                  INTER_CUBIC)
+from cv2 import __version__ as cv2__version__
 from ui.CustomComponents import (ZAlignmentROI,
                                  SpinBoxDelegate,
                                  TransformationMatrixModel)
+
+def get_nested(item, branches):
+    for i in branches:
+        item = item[i]
+    return item
 
 
 class FIBSliceCorrector(QtWidgets.QMainWindow,
@@ -43,9 +50,20 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.reset_triangle.setIcon(pg.icons.default.qicon)
         kernel = self.console.kernel_manager.kernel
         kernel.shell.push(dict(np=np, pg=pg, hs=hs, app=self))
-        self.splitter_4.addWidget(self.console)
+        self.dockConsole.setWidget(self.console)
         self.console.execute("whos")
-        self.console.setVisible(False)
+        self.dockConsole.hide()
+        self.tv_metadata.setSelectionMode(
+            QtWidgets.QAbstractItemView.ExtendedSelection)
+        # use some Qt built-in icons:
+        pixmapi = QtWidgets.QStyle.SP_ArrowUp
+        self.up_button.setIcon(self.style().standardIcon(pixmapi))
+        pixmapi = QtWidgets.QStyle.SP_ArrowDown
+        self.down_button.setIcon(self.style().standardIcon(pixmapi))
+        pixmapi = QtWidgets.QStyle.SP_ArrowLeft
+        self.left_button.setIcon(self.style().standardIcon(pixmapi))
+        pixmapi = QtWidgets.QStyle.SP_ArrowRight
+        self.right_button.setIcon(self.style().standardIcon(pixmapi))
 
     @classmethod
     def init_affine_transformation_matrix(cls):
@@ -54,14 +72,16 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
                          [0., 0., 1.]],
                         dtype=np.float32)
 
-    def get_empty_slice(self):
+    def get_full_slice(self):
+        """get full slice selecting whole diminsions of data
+        for further manipulatio of slice"""
         if self.i_data is None:
             raise ValueError("no data is loaded")
         else:
             return [slice(None)] * self.i_data.ndim
 
     def get_frame_slice(self, i_frame):
-        i_slice = self.get_empty_slice()
+        i_slice = self.get_full_slice()
         i_slice[self.i_depth] = i_frame
         return (*i_slice,)
 
@@ -80,11 +100,21 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         if index_z not in self.at_matrices:
             self.at_matrices[index_z] = {
                 'matrix': self.init_affine_transformation_matrix()}
+            i_slice = self.get_full_slice()
+            x, y = (1, 0) if self.i_width > self.i_height else (0, 1)
+            i_slice[self.i_depth] = index_z
+            self.i_data[(*i_slice,)] = np.roll(self.i_data[(*i_slice,)],
+                                               -self.shifts[index_z],
+                                               axis=(x, y))
             TransformationMatrixModel(self.at_matrices[index_z])
             i_slice = self.get_frame_slice(index_z)
             self.at_matrices[index_z]['initial'] = copy(self.i_data[i_slice])
+            self.at_matrices[index_z]['matrix'][:2, 2] = self.shifts[index_z]
+            self.shifts[index_z][:] = 0, 0
+            self.apply_affine_transformation(index_z)
             if current_flag:
                 self.switch_to_matrix_correction_widget()
+                self.update_images()
 
     def remove_at_and_reset(self):
         i = self.get_index_for_manipulation()
@@ -128,12 +158,13 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.simple_mode = True
 
     def apply_shifts(self, shifts):
-        i_slice = self.get_empty_slice()
+        i_slice = self.get_full_slice()
+        x, y = (1, 0) if self.i_width > self.i_height else (0, 1)
         for i in range(self.i_data.shape[self.i_depth]):
             i_slice[self.i_depth] = i
             self.i_data[(*i_slice,)] = np.roll(self.i_data[(*i_slice,)],
                                                shifts[i],
-                                               axis=(1, 0))
+                                               axis=(x, y))
 
     def save_corrections(self):
         at_jsonized = {str(i): self.at_matrices[i]['matrix'].tolist()
@@ -154,8 +185,9 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
     def load_shifts(self):
         """load and apply pixel shifts"""
         fn, ft = QtWidgets.QFileDialog.getOpenFileName(
-            self, 'select correction file', '../',
-            "Numpy files (*.npy);; Json correction (*.json)")
+            self, 'select shift transformation file', '../',
+            "Shifts and affine transformation matrices in json (*.json);;"
+            "Shifts as Numpy array (*.npy)")
         if ft == '':
             return
         self.apply_shifts(-self.shifts)
@@ -174,7 +206,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             at = {int(i): np.asarray(corrections['at'][i],
                                      dtype=np.float64)
                   for i in corrections['at']}
-            i_slice = self.get_empty_slice()
+            i_slice = self.get_full_slice()
             for i in at:
                 self.at_matrices[i] = {'matrix': at[i]}
                 TransformationMatrixModel(self.at_matrices[i])
@@ -210,7 +242,8 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.actionSave_corrections.triggered.connect(self.save_corrections)
         self.show_ref_points.toggled.connect(self.show_original_triangulation)
         self.show_ref_points.toggled.connect(self.enable_affine_by_tripoint)
-        self.pin_points_to_slice.toggled.connect(self.enable_affine_by_triangle)
+        self.pin_points_to_slice.toggled.connect(
+            self.enable_affine_by_triangle)
 
     def enable_affine_by_tripoint(self, state):
         if state:
@@ -228,7 +261,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
 
     def change_vertical_slice(self):
         pos = int(round(self.v_slice_line.pos()[0]))
-        i_slice = self.get_empty_slice()
+        i_slice = self.get_full_slice()
         i_slice[self.i_width] = pos
         self.slice_yz = self.i_data[(*i_slice,)]
         if self.i_depth < self.i_height:
@@ -243,13 +276,10 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
 
     def change_horizontal_slice(self):
         pos = int(round(self.h_slice_line.pos()[1]))
-        i_slice = self.get_empty_slice()
+        i_slice = self.get_full_slice()
         i_slice[self.i_height] = pos
         self.slice_xz = self.i_data[(*i_slice,)]
-        if self.i_depth < self.i_width:
-            i_z, i_x = 0, 1
-        else:
-            i_z, i_x = 1, 0
+        i_z, i_x = (0, 1) if self.i_depth < self.i_width else (1, 0)
         self.h_depth_iv.setImage(self.slice_xz,
                                  axes={'x': i_x, 'y': i_z},
                                  autoRange=False,
@@ -258,6 +288,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
 
     def lock_current_index(self, state):
         if state:
+            self.transparency_slider.setEnabled(True)
             self.locked_index = self.current_i
             i_slice = self.get_frame_slice(self.locked_index)
             self.locked_image_item = pg.ImageItem(self.i_data[i_slice])
@@ -283,8 +314,11 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             self.vert_line_2.show()
             self.horiz_line_locked.hide()
             self.vert_line_locked.hide()
+            self.transparency_slider.setEnabled(False)
             self.update_shift_widget()
             self.which_widget()
+            self.check_box_blacklisted.setChecked(
+                self.blacklist_mask[self.get_index_for_manipulation()])
 
     def change_locked_image_opacity(self, int_value):
         self.locked_image_item.setOpacity(int_value / 100)
@@ -295,9 +329,10 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         if state:
             points = [(j.x(), j.y()) for j in self.original_ref]
             self.floating_triangle = pg.PolyLineROI(positions=points,
-                                                    closed=True)
+                                                    closed=True, )
             self.slice_iv.addItem(self.floating_triangle)
-            self.floating_triangle.sigRegionChanged.connect(self.at_from_three)
+            self.floating_triangle.sigRegionChanged.connect(
+                self.at_from_three)
         else:
             self.floating_triangle.sigRegionChanged.disconnect(
                 self.at_from_three)
@@ -306,9 +341,11 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
 
     def at_from_three(self):
         index = self.get_index_for_manipulation()
-        h_list = np.array(
-            [tuple(h.pos()) for h in self.floating_triangle.getHandles()],
-            dtype=np.float32)
+        state = self.floating_triangle.getState()
+        pos_offset = state['pos']
+        vertices = state['points']
+        h_list = np.array([tuple(h + pos_offset) for h in vertices],
+                          dtype=np.float32)
         p_list = np.array([tuple(p.pos()) for p in self.original_ref],
                           dtype=np.float32)
         self.at_matrices[index]['matrix'][:2] = getAffineTransform(p_list,
@@ -324,6 +361,25 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         if fn is None:
             return
         self.cube.save(fn)
+
+    def export_as_slices(self):
+        fn, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            "give a file name and directory",
+            None,
+            "JPEG (*.jpeg);;"
+            "TIFF (*.tif);;"
+            "PNG (*.png)"
+        )
+        if fn is None:
+            return
+        progress_bar = QtWidgets.QProgressBar()
+        self.statusBar.addPermanentWidget(progress_bar)
+        progress_bar.setValue(0)
+        for i, img in enumerate(self.cube):
+            img.save(f"_{i:04d}.".join(fn.rsplit(".", 1)))
+            progress_bar.setValue(int(i/self.slice_iv.nframes()))
+        self.statusBar.removeWidget(progress_bar)
 
     def crop_cube(self):
         if self.actionlock_onto_current_slice.isChecked():
@@ -352,14 +408,14 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         y1 = int(self.align_line_y1.pos()[1])
         y2 = int(self.align_line_y2.pos()[1])
 
-        i_slice = self.get_empty_slice()
+        i_slice = self.get_full_slice()
         i_slice[self.i_width] = slice(x1, x2)
         i_slice[self.i_height] = slice(y1, y2)
         norma_arr = np.mean(self.i_data[(*i_slice,)],
                             axis=(self.i_height, self.i_width))
         min_arr = int(norma_arr.min())
         normalization_arr = norma_arr - min_arr
-        i_slice = self.get_empty_slice()
+        i_slice = self.get_full_slice()
         for i in range(self.i_data.shape[self.i_depth]):
             i_slice = self.get_frame_slice(i)
             self.i_data[i_slice] = np.where(
@@ -400,6 +456,8 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.cube = None
         self.i_data = None
         self.shifts = None
+        self.check_box_blacklisted.setChecked(False)
+        self.blacklist_mask = None
         self.slice_iv.clear()
         self.slice_xz = None
         self.slice_yz = None
@@ -416,10 +474,12 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         for i in range(n_axes):
             if hspy_sig.axes_manager[i].name == 'width':
                 self.i_width = hspy_sig.axes_manager[i].index_in_array
+                self.i_hspy_width = i
             elif hspy_sig.axes_manager[i].name == 'height':
                 self.i_height = hspy_sig.axes_manager[i].index_in_array
             elif n_axes == 3:
                 self.i_depth = hspy_sig.axes_manager[i].index_in_array
+                self.i_hspy_depth = i
             else:
                 raise TypeError("data with more than 3 dimensions currently not supported")
 
@@ -431,6 +491,8 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.i_data = self.cube.data
         self.shifts = np.zeros(shape=(self.i_data.shape[self.i_depth], 2))
         self.shifts = self.shifts.astype(np.int32)
+        self.blacklist_mask = np.full((self.i_data.shape[self.i_depth]), False,
+                                      dtype=bool)
         self.slice_iv.setImage(self.i_data, axes={'t': self.i_depth,
                                                   'x': self.i_width,
                                                   'y': self.i_height})
@@ -439,28 +501,160 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.main_image_item = self.slice_iv.getImageItem()
         self.main_image_item.sigImageChanged.connect(self.update_index)
         self.setup_slicers()
+        self.setup_metadata_stack_gui()
+
         if self.first_time_load:
             self.gen_align_lines()
+            self.plot_widget_line = self.pw_metadata.plotItem.addLine(x=0)
+            self.pw_metadata.plotItem.addLegend()
             self.connection_set_after_load()
             self.actionSave.setEnabled(True)
             self.actionSave.triggered.connect(self.save_cube)
             self.actionCrop.setEnabled(True)
+            self.actionExport_as_img_series.setEnabled(True)
+            self.actionExport_as_img_series.triggered.connect(
+                self.export_as_slices)
+            self.check_box_blacklisted.stateChanged.connect(
+                self.black_list_current_slice)
             self.actionCrop.triggered.connect(self.crop_cube)
             self.actionNormalize.triggered.connect(self.normalize)
-            self.actionVertical_shift_guide.toggled.connect(self.graphic_v_guide)
-            self.actionHorizontal_shift_guide.toggled.connect(self.graphic_h_guide)
+            self.actionVertical_shift_guide.toggled.connect(
+                self.graphic_v_guide)
+            self.actionHorizontal_shift_guide.toggled.connect(
+                self.graphic_h_guide)
             self.slices_spinbox.valueChanged.connect(
                 self.update_index)
-            self.v_roi_line_btn = QtWidgets.QPushButton("aligning to Polyline ROI")
+            self.v_roi_line_btn = QtWidgets.QPushButton(
+                "aligning to Polyline ROI")
             self.v_depth_iv.ui.gridLayout.addWidget(self.v_roi_line_btn)
             self.v_roi_line_btn.setVisible(False)
             self.v_roi_line_btn.pressed.connect(self.align_to_v_guide_roi)
-            self.h_roi_line_btn = QtWidgets.QPushButton("aligning to Polyline ROI")
+            self.h_roi_line_btn = QtWidgets.QPushButton(
+                "aligning to Polyline ROI")
             self.h_depth_iv.ui.gridLayout.addWidget(self.h_roi_line_btn)
             self.h_roi_line_btn.setVisible(False)
             self.h_roi_line_btn.pressed.connect(self.align_to_h_guide_roi)
             self.first_time_load = False
-        
+
+    def change_plot_metadata_source(self, index):
+        if index == 0:
+            self.tv_metadata.setData(
+                self.cube.original_metadata.stack_elements.element0.as_dictionary(),
+                hideRoot=True)
+            self.tv_metadata.collapseAll()
+            self.pb_destroy_stack_elements.setEnabled(True)
+            self.pb_stack_in_arrays.setEnabled(True)
+        else:
+            self.tv_metadata.setData(
+                self.cube.original_metadata.stack_in_arrays.as_dictionary(),
+                hideRoot=True)
+            self.tv_metadata.collapseAll()
+            self.pb_stack_in_arrays.setEnabled(False)
+
+    def setup_metadata_stack_gui(self):
+        if "stack_elements" in self.cube.original_metadata:
+            self.cb_treeview_source.setEnabled(True)
+            self.tv_metadata.setEnabled(True)
+            self.pw_metadata.setEnabled(True)
+            self.change_plot_metadata_source(0)
+            self.tv_metadata.itemSelectionChanged.connect(
+                self.plot_selected_metadata)
+            if "stack_in_arrays" not in self.cube.original_metadata:
+                self.cube.original_metadata.add_node("stack_in_arrays")
+            self.cb_treeview_source.currentIndexChanged.connect(
+                self.change_plot_metadata_source)
+            self.pb_destroy_stack_elements.pressed.connect(
+                self.discard_stack_elements)
+            self.pb_stack_in_arrays.pressed.connect(
+                self.stack_selected_metadata)
+        elif "stack_in_arrays" in self.cube.original_metadata:
+            self.cb_treeview_source.setCurrentIndex(1)
+            self.tv_metadata.setEnabled(True)
+            self.pw_metadata.setEnabled(True)
+            self.cb_treeview_source.setEnabled(False)
+            self.change_plot_metadata_source(1)
+            self.pb_destroy_stack_elements.setEnabled(False)
+            self.tv_metadata.itemSelectionChanged.connect(
+                self.plot_selected_metadata)
+        else:
+            self.tv_metadata.setEnabled(False)
+            self.pw_metadata.setEnabled(False)
+            self.cb_treeview_source.setEnabled(False)
+            self.pb_destroy_stack_elements.setEnabled(False)
+            self.pb_stack_in_arrays.setEnabled(False)
+            self.tv_metadata.setData({})
+            self.tv_metadata.itemSelectionChanged.disconnect(
+                self.plot_selected_metadata)
+            self.cb_treeview_source.currentIndexChanged.disconnect(
+                self.change_plot_metadata_source)
+            self.pb_destroy_stack_elements.pressed.disconnect(
+                self.discard_stack_elements)
+            self.pb_stack_in_arrays.pressed.disconnect(
+                self.stack_selected_metadata)
+
+    def discard_stack_elements(self):
+        if "stack_elements" in self.cube.original_metadata:
+            del self.cube.original_metadata.stack_elements
+            self.change_plot_metadata_source(1)
+            self.cb_treeview_source.setEnabled(False)
+
+    def stack_selected_metadata(self):
+        selected_items = self.tv_metadata.selectedItems()
+        valid_items = [item for item in selected_items
+                       if item.data(1, 0) in ['int', 'float']]
+        if len(valid_items) > 0:
+            paths = [item for item in self.tv_metadata.nodes.items()
+                     if item[1] in valid_items]
+            n_slices = self.slice_iv.nframes()
+            for j, p in enumerate(paths):
+                plot_data = [get_nested(self.cube.original_metadata.stack_elements[f"element{i}"],
+                                        p[0]) for i in range(n_slices)]
+                dtb_path, ok = QtWidgets.QInputDialog.getText(
+                    self,
+                    f"enter raplacement name/path for {p[0]}",
+                    "can be defined as path with dot as separation:",
+                    QtWidgets.QLineEdit.EchoMode.Normal,
+                    ".".join([str(pa) for pa in p[0]]))
+                self.cube.original_metadata.stack_in_arrays.set_item(
+                    dtb_path, np.array(plot_data))
+
+    def plot_selected_metadata(self):
+        selected_items = self.tv_metadata.selectedItems()
+        if self.cb_treeview_source.currentIndex() == 0:
+            valid_items = [item for item in selected_items
+                           if item.data(1, 0) in ['int', 'float']]
+        else:
+            valid_items = [item for item in selected_items
+                           if item.data(1, 0) == 'ndarray']
+        if len(valid_items) > 0:
+            self.pw_metadata.plotItem.clear()
+            paths = [item for item in self.tv_metadata.nodes.items()
+                     if item[1] in valid_items]
+            n_slices = self.slice_iv.nframes()
+            if self.cb_treeview_source.currentIndex() == 0:
+                for j, p in enumerate(paths):
+                    plot_data = [get_nested(self.cube.original_metadata.stack_elements[f"element{i}"],
+                                            p[0]) for i in range(n_slices)]
+                    plotitem = pg.PlotDataItem(plot_data,
+                                               #symbol='x',
+                                               name="{0}/{1}".format(*p[0][-2:]),
+                                               pen=pg.Color(j))
+                    self.pw_metadata.addItem(plotitem)
+            else:
+                for j, p in enumerate(paths):
+                    plot_data = self.cube.original_metadata.stack_in_arrays.get_item(".".join(p[0]))
+                    plotitem = pg.PlotDataItem(plot_data,
+                                               #symbol='x',
+                                               name=".".join(p[0]),
+                                               pen=pg.Color(j))
+                    self.pw_metadata.addItem(plotitem)
+
+            self.pw_metadata.addItem(self.plot_widget_line)
+
+    def black_list_current_slice(self, check_state):
+        index = self.get_index_for_manipulation()
+        self.blacklist_mask[index] = True if check_state else False
+
     def graphic_v_guide(self, state):
         self.v_roi_line_btn.setVisible(state)
         if state:
@@ -533,10 +727,10 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             self.v_slice_line.setBounds([0, v_bound - 1])
             self.h_slice_line.setPos(h_bound // 2)
             self.h_slice_line.setBounds([0, h_bound - 1])
-        xz_slice = self.get_empty_slice()
+        xz_slice = self.get_full_slice()
         xz_slice[self.i_height] = h_bound // 2
         self.slice_xz = self.i_data[(*xz_slice,)]
-        yz_slice = self.get_empty_slice()
+        yz_slice = self.get_full_slice()
         yz_slice[self.i_width] = v_bound // 2
         self.slice_yz = self.i_data[(*yz_slice,)]
         if self.i_depth < self.i_height:
@@ -632,9 +826,11 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.vert_line_2.setPos(index + strenght)
         self.slices_spinbox.setMaximum(
             self.i_data.shape[self.i_depth] - index)
+        self.plot_widget_line.setPos(index)
         if not self.slice_lock.isChecked():
             self.update_shift_widget()
             self.which_widget()
+            self.check_box_blacklisted.setChecked(bool(self.blacklist_mask[index]))
 
     def update_shift_widget(self):
         index = self.get_index_for_manipulation()
@@ -658,20 +854,27 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.mtv.setModel(self.at_matrices[index]["model"])
 
     def update_aspect_ratio(self):
-        init_val = self.cube.axes_manager[0].scale
+        i_depth_hspy = self.i_hspy_depth
+        i_width_hspy = self.i_hspy_width
+        init_val = self.cube.axes_manager[i_depth_hspy].scale
         z_val, ok_clicked = QtWidgets.QInputDialog.getDouble(
-            self, 
-            "set interval size", "set inter-slice length \n(changes the aspect ratio for (z,y) and (x,z) plots) \n the distance in-between slices (in nm):",
+            self,
+            "set interval size",
+            "set inter-slice length\n"
+            "(changes the aspect ratio for (z,y) and (x,z) plots)\n"
+            "the distance in-between slices (in nm):",
             init_val,
             0, 500,
             10)
         if ok_clicked:
-            self.cube.axes_manager[0].units = 'nm'
-            self.cube.axes_manager[0].scale = z_val
-            z_val = self.cube.axes_manager[0].scale_as_quantity
-            x_val = self.cube.axes_manager[1].scale_as_quantity
-            self.v_depth_iv.getView().setAspectLocked(True, ratio=float(z_val/x_val))
-            self.h_depth_iv.getView().setAspectLocked(True, ratio=float(x_val/z_val))
+            self.cube.axes_manager[i_depth_hspy].units = 'nm'
+            self.cube.axes_manager[i_depth_hspy].scale = z_val
+            z_val = self.cube.axes_manager[i_depth_hspy].scale_as_quantity
+            x_val = self.cube.axes_manager[i_width_hspy].scale_as_quantity
+            self.v_depth_iv.getView().setAspectLocked(True,
+                                                      ratio=float(z_val/x_val))
+            self.h_depth_iv.getView().setAspectLocked(True,
+                                                      ratio=float(x_val/z_val))
 
     def update_images(self):
         self.slice_iv.updateImage()
@@ -681,7 +884,10 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             self.locked_image_item.updateImage()
 
     def apply_affine_transformation(self, index=None, fast=False):
-        """scipy.ndimage.affine_transform"""
+        """kwords: index=None, fast=False;
+        if index is not integer then current slice index is used
+        if fast True, INTER_CUBIC interpolation, if False then faster
+        INTER_NEAREST opencv interpolation is used."""
         if fast:
             interp_mode = INTER_NEAREST
         else:
@@ -710,28 +916,33 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         for i in range(index, end):
             self.i_data[self.get_frame_slice(i)] = np.roll(
                 self.i_data[self.get_frame_slice(i)], strenght, axis=axis)
+        x, y = (0, 1) if self.i_width > self.i_height else (1, 0)
         if axis == 1:
-            self.shifts[index:end, 0] += strenght
+            self.shifts[index:end, x] += strenght
         elif axis == 0:
-            self.shifts[index:end, 1] += strenght
+            self.shifts[index:end, y] += strenght
         self.update_images()
         self.update_shift_widget()
 
     def shift_right(self):
         strenght = self.strenght_spinbox.value()
-        self.shift_multi(strenght, 1)
+        self.shift_multi(strenght,
+                         1 if self.i_width > self.i_height else 0)
 
     def shift_left(self):
         strenght = self.strenght_spinbox.value()
-        self.shift_multi(-strenght, 1)
+        self.shift_multi(-strenght,
+                         1 if self.i_width > self.i_height else 0)
 
     def shift_up(self):
         strenght = self.strenght_spinbox.value()
-        self.shift_multi(-strenght, 0)
+        self.shift_multi(-strenght,
+                         0 if self.i_width > self.i_height else 1)
 
     def shift_down(self):
         strenght = self.strenght_spinbox.value()
-        self.shift_multi(strenght, 0)
+        self.shift_multi(strenght,
+                         0 if self.i_width > self.i_height else 1)
 
     def show_about_qt(self):
         QtWidgets.QMessageBox.aboutQt(self)
@@ -744,7 +955,8 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
                                     "Library versions:\n"
                                     f" PyQt5: {QtCore.PYQT_VERSION_STR}\n"
                                     f" PyQtGraph: {pg.__version__}\n"
-                                    f" HypersPy: {hs.__version__}\n")
+                                    f" HypersPy: {hs.__version__}\n"
+                                    f" OpenCV: {cv2__version__}\n")
 
 
 def main():

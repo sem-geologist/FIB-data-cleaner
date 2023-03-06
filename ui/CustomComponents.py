@@ -1,16 +1,8 @@
 from PyQt5 import QtCore, QtGui, QtWidgets
 from pyqtgraph.graphicsItems.ROI import Handle, PolyLineROI
-from pyqtgraph import Point, ImageView
+from pyqtgraph import Point
 import numpy as np
 
-# this class can be eliminated when fix will be relesead with pyqtgraph
-class FixedImageView(ImageView):
-    def nframes(self):
-        if self.image is None:
-            return 0
-        elif self.axes['t'] is not None:
-            return self.image.shape[self.axes['t']]
-        return 1
 
 class TransformationMatrixModel(QtCore.QAbstractTableModel):
     def __init__(self, dict_node):
@@ -226,7 +218,8 @@ class ZAlignmentROI(PolyLineROI):
     def getShifts(self):
         """return array of frame x, y shifts generated from this Poly
         line ROI"""
-        points = np.array([list(Point(i['pos'])) for i in self.handles], dtype=np.int32)
+        points = np.array([list(Point(i['pos'])) for i in self.handles],
+                          dtype=np.int32)
         shifts = np.zeros((self.data_cube.shape[self.i_l_axis], 2))
         if self.orientation == 'h':
             idx = 1
