@@ -20,12 +20,6 @@ from ui.CustomComponents import (ZAlignmentROI,
                                  SpinBoxDelegate,
                                  TransformationMatrixModel)
 
-def get_nested(item, branches):
-    for i in branches:
-        item = item[i]
-    return item
-
-
 class FIBSliceCorrector(QtWidgets.QMainWindow,
                         MainWindow.Ui_MainWindow):
     def __init__(self):
@@ -64,13 +58,10 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.left_button.setIcon(self.style().standardIcon(pixmapi))
         pixmapi = QtWidgets.QStyle.SP_ArrowRight
         self.right_button.setIcon(self.style().standardIcon(pixmapi))
-
-    @classmethod
-    def init_affine_transformation_matrix(cls):
-        return np.array([[1., 0., 0.],
-                         [0., 1., 0.],
-                         [0., 0., 1.]],
-                        dtype=np.float32)
+        self.actionlock_onto_current_slice.toggled.connect(
+            self.lock_current_index)
+        self.actionlock_onto_current_slice.setIcon(pg.icons.lock.qicon)
+        self.slice_lock.setDefaultAction(self.actionlock_onto_current_slice)
 
     def get_full_slice(self):
         """get full slice selecting whole diminsions of data
@@ -99,7 +90,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             index_z = self.get_index_for_manipulation()
         if index_z not in self.at_matrices:
             self.at_matrices[index_z] = {
-                'matrix': self.init_affine_transformation_matrix()}
+                'matrix': np.identity(3, dtype=np.float32)}
             i_slice = self.get_full_slice()
             x, y = (1, 0) if self.i_width > self.i_height else (0, 1)
             i_slice[self.i_depth] = index_z
@@ -225,7 +216,6 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.right_button.pressed.connect(self.shift_right)
         self.up_button.pressed.connect(self.shift_up)
         self.down_button.pressed.connect(self.shift_down)
-        self.slice_lock.toggled.connect(self.lock_current_index)
         self.actionLoad_corrections.setEnabled(True)
         self.actionLoad_corrections.triggered.connect(self.load_shifts)
         self.actionGet_z_scale.setEnabled(True)
@@ -293,7 +283,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             i_slice = self.get_frame_slice(self.locked_index)
             self.locked_image_item = pg.ImageItem(self.i_data[i_slice])
             self.slice_iv.addItem(self.locked_image_item)
-            self.slice_lock.setText(
+            self.lock_text.setText(
                 ' locked at index {}'.format(self.locked_index))
             self.transparency_slider.sliderMoved.connect(
                                         self.change_locked_image_opacity)
@@ -306,8 +296,8 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             self.vert_line_locked.setPos(self.locked_index)
             self.vert_line_locked.show()
         else:
-            self.slice_lock.setText(
-                  ' Lock onto current slice:')
+            self.lock_text.setText(
+                ' Lock current slice')
             self.slice_iv.removeItem(self.locked_image_item)
             self.locked_image_item = None
             self.horiz_line_2.show()
@@ -317,8 +307,8 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             self.transparency_slider.setEnabled(False)
             self.update_shift_widget()
             self.which_widget()
-            self.check_box_blacklisted.setChecked(
-                self.blacklist_mask[self.get_index_for_manipulation()])
+            self.check_box_blacklisted.setChecked(bool(
+                self.blacklist_mask[self.get_index_for_manipulation()]))
 
     def change_locked_image_opacity(self, int_value):
         self.locked_image_item.setOpacity(int_value / 100)
@@ -583,14 +573,17 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             self.pb_destroy_stack_elements.setEnabled(False)
             self.pb_stack_in_arrays.setEnabled(False)
             self.tv_metadata.setData({})
-            self.tv_metadata.itemSelectionChanged.disconnect(
-                self.plot_selected_metadata)
-            self.cb_treeview_source.currentIndexChanged.disconnect(
-                self.change_plot_metadata_source)
-            self.pb_destroy_stack_elements.pressed.disconnect(
-                self.discard_stack_elements)
-            self.pb_stack_in_arrays.pressed.disconnect(
-                self.stack_selected_metadata)
+            try:
+                self.tv_metadata.itemSelectionChanged.disconnect(
+                    self.plot_selected_metadata)
+                self.cb_treeview_source.currentIndexChanged.disconnect(
+                    self.change_plot_metadata_source)
+                self.pb_destroy_stack_elements.pressed.disconnect(
+                    self.discard_stack_elements)
+                self.pb_stack_in_arrays.pressed.disconnect(
+                    self.stack_selected_metadata)
+            except TypeError:
+                pass
 
     def discard_stack_elements(self):
         if "stack_elements" in self.cube.original_metadata:
@@ -600,6 +593,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
 
     def stack_selected_metadata(self):
         selected_items = self.tv_metadata.selectedItems()
+        om = self.cube.original_metadata
         valid_items = [item for item in selected_items
                        if item.data(1, 0) in ['int', 'float']]
         if len(valid_items) > 0:
@@ -607,8 +601,9 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
                      if item[1] in valid_items]
             n_slices = self.slice_iv.nframes()
             for j, p in enumerate(paths):
-                plot_data = [get_nested(self.cube.original_metadata.stack_elements[f"element{i}"],
-                                        p[0]) for i in range(n_slices)]
+                plot_data = [
+                    om.stack_elements[f"element{i}"].get_item(".".join(p[0]))
+                    for i in range(n_slices)]
                 dtb_path, ok = QtWidgets.QInputDialog.getText(
                     self,
                     f"enter raplacement name/path for {p[0]}",
@@ -620,6 +615,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
 
     def plot_selected_metadata(self):
         selected_items = self.tv_metadata.selectedItems()
+        om = self.cube.original_metadata
         if self.cb_treeview_source.currentIndex() == 0:
             valid_items = [item for item in selected_items
                            if item.data(1, 0) in ['int', 'float']]
@@ -633,18 +629,17 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             n_slices = self.slice_iv.nframes()
             if self.cb_treeview_source.currentIndex() == 0:
                 for j, p in enumerate(paths):
-                    plot_data = [get_nested(self.cube.original_metadata.stack_elements[f"element{i}"],
-                                            p[0]) for i in range(n_slices)]
+                    plot_data = [
+                        om.stack_elements[f"element{i}"].get_item(".".join(p[0]))
+                        for i in range(n_slices)]
                     plotitem = pg.PlotDataItem(plot_data,
-                                               #symbol='x',
                                                name="{0}/{1}".format(*p[0][-2:]),
                                                pen=pg.Color(j))
                     self.pw_metadata.addItem(plotitem)
             else:
                 for j, p in enumerate(paths):
-                    plot_data = self.cube.original_metadata.stack_in_arrays.get_item(".".join(p[0]))
+                    plot_data = om.stack_in_arrays.get_item(".".join(p[0]))
                     plotitem = pg.PlotDataItem(plot_data,
-                                               #symbol='x',
                                                name=".".join(p[0]),
                                                pen=pg.Color(j))
                     self.pw_metadata.addItem(plotitem)
@@ -885,9 +880,11 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
 
     def apply_affine_transformation(self, index=None, fast=False):
         """kwords: index=None, fast=False;
-        if index is not integer then current slice index is used
-        if fast True, INTER_CUBIC interpolation, if False then faster
-        INTER_NEAREST opencv interpolation is used."""
+        if index is not integer (including None) then current slice index
+        is used;
+        if fast=True, then faster INTER_NEAREST interpolation is used,
+        if fast=False then more precise INTER_CUBIC opencv interpolation
+        is used."""
         if fast:
             interp_mode = INTER_NEAREST
         else:
