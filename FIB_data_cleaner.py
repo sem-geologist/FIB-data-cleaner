@@ -62,6 +62,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             self.lock_current_index)
         self.actionlock_onto_current_slice.setIcon(pg.icons.lock.qicon)
         self.slice_lock.setDefaultAction(self.actionlock_onto_current_slice)
+        self.reset_triangle.pressed.connect(self.reset_from_three)
 
     def get_full_slice(self):
         """get full slice selecting whole diminsions of data
@@ -153,9 +154,27 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         x, y = (1, 0) if self.i_width > self.i_height else (0, 1)
         for i in range(self.i_data.shape[self.i_depth]):
             i_slice[self.i_depth] = i
-            self.i_data[(*i_slice,)] = np.roll(self.i_data[(*i_slice,)],
-                                               shifts[i],
-                                               axis=(x, y))
+            if i in self.at_matrices:
+                mx = np.identity(3, np.float32)
+                mx[:2, 2] = shifts[i]
+                shifts[i][:] = 0, 0
+                self.post_multiply_at(i, mx)
+            else:
+                self.i_data[(*i_slice,)] = np.roll(self.i_data[(*i_slice,)],
+                                                   shifts[i],
+                                                   axis=(x, y))
+
+    def post_multiply_at(self, idx, mx):
+        self.at_matrices[idx]["matrix"][:] = mx @ self.at_matrices[idx]["matrix"]
+        self.apply_affine_transformation(idx)
+        if idx == self.get_index_for_manipulation():
+            self.update_affine_widget()
+
+    def pre_multiply_at(self, idx, mx):
+        self.at_matrices[idx]["matrix"][:] = self.at_matrices[idx]["matrix"] @ mx
+        self.apply_affine_transformation(idx)
+        if idx == self.get_index_for_manipulation():
+            self.update_affine_widget()
 
     def save_corrections(self):
         at_jsonized = {str(i): self.at_matrices[i]['matrix'].tolist()
@@ -222,9 +241,9 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.actionGet_z_scale.triggered.connect(self.update_aspect_ratio)
         self.actionshow_markers.toggled.connect(self.visual_guides)
         self.v_slice_line.sigPositionChanged.connect(
-                                                self.change_vertical_slice)
+                                                self.update_vertical_slice)
         self.h_slice_line.sigPositionChanged.connect(
-                                                self.change_horizontal_slice)
+                                                self.update_horizontal_slice)
         self.init_slice_btn.setEnabled(True)
         self.init_slice_btn.pressed.connect(self.init_at_at_index)
         self.reset_matrix.pressed.connect(self.remove_at_and_reset)
@@ -249,7 +268,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.align_line_y2.setVisible(status)
         self.roi_main.setVisible(status)
 
-    def change_vertical_slice(self):
+    def update_vertical_slice(self):
         pos = int(round(self.v_slice_line.pos()[0]))
         i_slice = self.get_full_slice()
         i_slice[self.i_width] = pos
@@ -264,7 +283,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
                                  autoHistogramRange=False,
                                  autoLevels=False)
 
-    def change_horizontal_slice(self):
+    def update_horizontal_slice(self):
         pos = int(round(self.h_slice_line.pos()[1]))
         i_slice = self.get_full_slice()
         i_slice[self.i_height] = pos
@@ -277,6 +296,9 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
                                  autoLevels=False)
 
     def lock_current_index(self, state):
+        """
+        lock the current index of slice making a overlay ImageItem
+        and connect its opacity to slider"""
         if state:
             self.transparency_slider.setEnabled(True)
             self.locked_index = self.current_i
@@ -314,9 +336,15 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.locked_image_item.setOpacity(int_value / 100)
 
     def enable_affine_by_triangle(self, state):
+        """should not be called with same state subsequently;
+        should be called by Q*Button signal which emits button
+        checked state."""
         for i in self.original_ref:
             i.movable = not state
         if state:
+            index = self.get_index_for_manipulation()
+            self._original_mx = self.at_matrices[index]['matrix'].copy()
+            self._temp_mx = np.identity(3, np.float32)
             points = [(j.x(), j.y()) for j in self.original_ref]
             self.floating_triangle = pg.PolyLineROI(positions=points,
                                                     closed=True, )
@@ -327,9 +355,12 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             self.floating_triangle.sigRegionChanged.disconnect(
                 self.at_from_three)
             self.slice_iv.removeItem(self.floating_triangle)
-            self.reset_triangle.setDisabled(True)
+        self.reset_triangle.setEnabled(state)
+        self.comboMatrixMode.setDisabled(state)
 
     def at_from_three(self):
+        """affine transformation from one of point or whole
+        tringle movement"""
         index = self.get_index_for_manipulation()
         state = self.floating_triangle.getState()
         pos_offset = state['pos']
@@ -338,13 +369,17 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
                           dtype=np.float32)
         p_list = np.array([tuple(p.pos()) for p in self.original_ref],
                           dtype=np.float32)
-        self.at_matrices[index]['matrix'][:2] = getAffineTransform(p_list,
-                                                                   h_list)
+        self._temp_mx[:2] = getAffineTransform(p_list, h_list)
+        self.at_matrices[index]['matrix'][:] = self._temp_mx @ self._original_mx
         self.apply_affine_transformation(index, fast=True)
-        model = self.at_matrices[index]["model"]
-        for i in range(2):
-            for j in range(3):
-                self.mtv.update(model.index(i, j))
+        self.update_affine_widget()
+
+    def reset_from_three(self):
+        index = self.get_index_for_manipulation()
+        self.at_matrices[index]['matrix'][:] = self._original_mx
+        self.apply_affine_transformation(index, fast=False)
+        self.update_affine_widget()
+        self.pin_points_to_slice.setChecked(False)
 
     def save_cube(self):
         fn, _ = QtWidgets.QFileDialog.getSaveFileName()
@@ -369,6 +404,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         for i, img in enumerate(self.cube):
             img.save(f"_{i:04d}.".join(fn.rsplit(".", 1)))
             progress_bar.setValue(int(i/self.slice_iv.nframes()))
+            progress_bar.update()
         self.statusBar.removeWidget(progress_bar)
 
     def crop_cube(self):
@@ -586,12 +622,17 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
                 pass
 
     def discard_stack_elements(self):
+        """strip up Hyperspy signal from stacked original metadata,
+        which significantly reduces file size, and makes loading
+        and saving speeds few orders faster"""
         if "stack_elements" in self.cube.original_metadata:
             del self.cube.original_metadata.stack_elements
             self.change_plot_metadata_source(1)
             self.cb_treeview_source.setEnabled(False)
 
     def stack_selected_metadata(self):
+        """consolidate selected metadata across slices into single
+        array"""
         selected_items = self.tv_metadata.selectedItems()
         om = self.cube.original_metadata
         valid_items = [item for item in selected_items
@@ -846,7 +887,11 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
 
     def update_affine_widget(self):
         index = self.get_index_for_manipulation()
-        self.mtv.setModel(self.at_matrices[index]["model"])
+        model = self.at_matrices[index]["model"]
+        self.mtv.setModel(model)
+        for i in range(2):
+            for j in range(3):
+                self.mtv.update(model.index(i, j))
 
     def update_aspect_ratio(self):
         i_depth_hspy = self.i_hspy_depth
