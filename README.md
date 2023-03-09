@@ -24,6 +24,7 @@ This tool provides posibilities to:
 * has included QtConsole, which allows to use other Hyperspy functions.
 * Has GUI for consolidating stacked original metadata into arrays for persistant saving under original metadata of Hyperspy Signal.
 * Has single button to strip away stacked original metadata, which otherwise would be converted during saving into other types, plus if not removed, it would extend loading and saving time few order of magnitude.
+* export data cube as separate images for every slice, either as "raw"-like or with LUT applied.
 
 It does not use `isig` or `inav` from HyperSpy signals, as pyqtgraph ImageView expects numpy array.
 Direct access of numpy arrays allows to visualise the slices much faster than what HyperSpy's `matplotlib`-based visualisation is able to achieve.
