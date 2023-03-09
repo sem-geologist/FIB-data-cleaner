@@ -20,6 +20,13 @@ from ui.CustomComponents import (ZAlignmentROI,
                                  SpinBoxDelegate,
                                  TransformationMatrixModel)
 
+def get_nested(node, branches):
+    """gets the item from nested dict, list, tuple or other
+    iterable where its elements can be accesed with square brackets"""
+    for b in branches:
+        node = node[b]
+    return node
+
 class FIBSliceCorrector(QtWidgets.QMainWindow,
                         MainWindow.Ui_MainWindow):
     def __init__(self):
@@ -392,9 +399,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             self,
             "give a file name and directory",
             None,
-            "JPEG (*.jpeg);;"
-            "TIFF (*.tif);;"
-            "PNG (*.png)"
+            "Images (*.jpg *.xpm *.png)"
         )
         if fn is None:
             return
@@ -643,7 +648,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             n_slices = self.slice_iv.nframes()
             for j, p in enumerate(paths):
                 plot_data = [
-                    om.stack_elements[f"element{i}"].get_item(".".join(p[0]))
+                    get_nested(om.stack_elements[f"element{i}"], p[0])
                     for i in range(n_slices)]
                 dtb_path, ok = QtWidgets.QInputDialog.getText(
                     self,
@@ -671,7 +676,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             if self.cb_treeview_source.currentIndex() == 0:
                 for j, p in enumerate(paths):
                     plot_data = [
-                        om.stack_elements[f"element{i}"].get_item(".".join(p[0]))
+                        get_nested(om.stack_elements[f"element{i}"], p[0])
                         for i in range(n_slices)]
                     plotitem = pg.PlotDataItem(plot_data,
                                                name="{0}/{1}".format(*p[0][-2:]),
