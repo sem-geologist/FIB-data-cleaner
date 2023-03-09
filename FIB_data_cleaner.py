@@ -394,23 +394,32 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             return
         self.cube.save(fn)
 
-    def export_as_slices(self):
+    def export_with_hs(self):
         fn, _ = QtWidgets.QFileDialog.getSaveFileName(
             self,
-            "give a file name and directory",
+            "export with raw-like intensities; give file name and directory",
             None,
-            "Images (*.jpg *.xpm *.png)"
+            "ImageIO supported Images (*.jpg *.xpm *.png)"
         )
         if fn is None:
             return
-        progress_bar = QtWidgets.QProgressBar()
-        self.statusBar.addPermanentWidget(progress_bar)
-        progress_bar.setValue(0)
+        self.setCursor(QtCore.Qt.WaitCursor)
         for i, img in enumerate(self.cube):
             img.save(f"_{i:04d}.".join(fn.rsplit(".", 1)))
-            progress_bar.setValue(int(i/self.slice_iv.nframes()))
-            progress_bar.update()
-        self.statusBar.removeWidget(progress_bar)
+        self.unsetCursor()
+
+    def export_with_pg(self):
+        """with applied LUT"""
+        fn, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            "export with applied LUT; give a file name and directory",
+            None,
+            "Qt supported Images (*.bmp *.jpg *.jpeg *.png *.ppm *.xbm *.xpm)")
+        if fn is None:
+            return
+        self.setCursor(QtCore.Qt.WaitCursor)
+        self.slice_iv.export(fn)
+        self.unsetCursor()
 
     def crop_cube(self):
         if self.actionlock_onto_current_slice.isChecked():
@@ -542,9 +551,12 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             self.actionSave.setEnabled(True)
             self.actionSave.triggered.connect(self.save_cube)
             self.actionCrop.setEnabled(True)
-            self.actionExport_as_img_series.setEnabled(True)
-            self.actionExport_as_img_series.triggered.connect(
-                self.export_as_slices)
+            self.actionExport_with_hs.setEnabled(True)
+            self.actionExport_with_pg.setEnabled(True)
+            self.actionExport_with_hs.triggered.connect(
+                self.export_with_hs)
+            self.actionExport_with_pg.triggered.connect(
+                self.export_with_pg)
             self.check_box_blacklisted.stateChanged.connect(
                 self.black_list_current_slice)
             self.actionCrop.triggered.connect(self.crop_cube)

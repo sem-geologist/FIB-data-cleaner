@@ -803,7 +803,10 @@
     <addaction name="actionSave"/>
     <addaction name="actionLoad_corrections"/>
     <addaction name="actionSave_corrections"/>
-    <addaction name="actionExport_as_img_series"/>
+    <addaction name="separator"/>
+    <addaction name="actionExport_with_hs"/>
+    <addaction name="actionExport_with_pg"/>
+    <addaction name="separator"/>
     <addaction name="actionExit"/>
    </widget>
    <widget class="QMenu" name="menuEdit">
@@ -978,12 +981,20 @@
     <string>Ctrl+Alt+C</string>
    </property>
   </action>
-  <action name="actionExport_as_img_series">
+  <action name="actionExport_with_hs">
    <property name="enabled">
     <bool>false</bool>
    </property>
    <property name="text">
-    <string>export as image series</string>
+    <string>export as image series (w/o LUT)</string>
+   </property>
+  </action>
+  <action name="actionExport_with_pg">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>export as image series (w/ LUT)</string>
    </property>
   </action>
  </widget>
