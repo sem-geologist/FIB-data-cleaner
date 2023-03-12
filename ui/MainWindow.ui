@@ -122,7 +122,7 @@
          <enum>QTabWidget::North</enum>
         </property>
         <property name="currentIndex">
-         <number>1</number>
+         <number>0</number>
         </property>
         <widget class="QWidget" name="tab_3">
          <attribute name="title">
@@ -141,6 +141,9 @@
           </item>
           <item row="2" column="0">
            <widget class="QCheckBox" name="check_box_blacklisted">
+            <property name="focusPolicy">
+             <enum>Qt::NoFocus</enum>
+            </property>
             <property name="toolTip">
              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;In some FIB-SEM cases, the milling is not refreshing the wall, and consequtive SEM slices taken represent the same wall. Checking this box will remove marked stack when saving the stack as a new file(s).&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
             </property>
@@ -370,6 +373,9 @@
                        <property name="text">
                         <string>init for slice</string>
                        </property>
+                       <property name="shortcut">
+                        <string>Ctrl+I</string>
+                       </property>
                        <property name="checkable">
                         <bool>true</bool>
                        </property>
@@ -572,6 +578,9 @@
                   </property>
                   <item row="1" column="0">
                    <widget class="QToolButton" name="left_button">
+                    <property name="focusPolicy">
+                     <enum>Qt::NoFocus</enum>
+                    </property>
                     <property name="toolTip">
                      <string>Shift+Left</string>
                     </property>
@@ -594,6 +603,9 @@
                       <verstretch>0</verstretch>
                      </sizepolicy>
                     </property>
+                    <property name="focusPolicy">
+                     <enum>Qt::NoFocus</enum>
+                    </property>
                     <property name="toolTip">
                      <string>Shift+Down</string>
                     </property>
@@ -610,6 +622,9 @@
                   </item>
                   <item row="1" column="1">
                    <widget class="QSpinBox" name="strenght_spinbox">
+                    <property name="focusPolicy">
+                     <enum>Qt::NoFocus</enum>
+                    </property>
                     <property name="suffix">
                      <string> px</string>
                     </property>
@@ -623,6 +638,9 @@
                   </item>
                   <item row="1" column="2">
                    <widget class="QToolButton" name="right_button">
+                    <property name="focusPolicy">
+                     <enum>Qt::NoFocus</enum>
+                    </property>
                     <property name="toolTip">
                      <string>Shift+Right</string>
                     </property>
@@ -644,6 +662,9 @@
                       <horstretch>0</horstretch>
                       <verstretch>0</verstretch>
                      </sizepolicy>
+                    </property>
+                    <property name="focusPolicy">
+                     <enum>Qt::NoFocus</enum>
                     </property>
                     <property name="toolTip">
                      <string>Shift+Up</string>

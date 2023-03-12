@@ -189,6 +189,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         roi_jsonized = {'pos': tuple(self.roi_main.pos()),
                         'size': tuple(self.roi_main.size())}
         jsonable_dict = {'shifts': self.shifts.tolist(),
+                         'blacklist_mask': self.blacklist_mask.tolist(),
                          'at': at_jsonized,
                          'roi': roi_jsonized}
         fn, ft = QtWidgets.QFileDialog.getSaveFileName(
@@ -207,16 +208,33 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             "Shifts as Numpy array (*.npy)")
         if ft == '':
             return
-        self.apply_shifts(-self.shifts)
         if '.npy' in ft:
             shifts = np.load(fn).astype(np.int32)
+            if len(shifts) != len(self.shifts):
+                msg = QtWidgets.QMessageBox.warning(
+                    self, "Shift loading failed",
+                    "loaded shift lenght is not the same as the number of slices")
+                msg.exec()
+                return
+            self.apply_shifts(-self.shifts)
             self.apply_shifts(shifts)
             self.shifts = shifts
         elif '.json' in ft:
             with open(fn, 'r') as file_pointer:
                 corrections = json.load(file_pointer)
-            self.shifts = np.asarray(corrections['shifts'], dtype=np.int32)
-            self.apply_shifts(self.shifts)
+            shifts = np.asarray(corrections['shifts'], dtype=np.int32)
+            if len(shifts) != len(self.shifts):
+                msg = QtWidgets.QMessageBox.warning(
+                    self, "Shift loading failed",
+                    "loaded shift lenght is not the same as the number of slices")
+                msg.exec()
+                return
+            if "blacklist_mask" in corrections:
+                self.blacklist_mask = np.asarray(corrections['blacklist_mask'],
+                                                 dtype=bool)
+            self.apply_shifts(-self.shifts)
+            self.apply_shifts(shifts)
+            self.shifts = shifts
             if 'roi' in corrections:
                 self.roi_main.setPos(corrections['roi']['pos'])
                 self.roi_main.setSize(corrections['roi']['size'])
@@ -422,25 +440,34 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.unsetCursor()
 
     def crop_cube(self):
+        """crop and reload hspy cube to the ROI and blacklist mask
+        Please keep in ming that this method overwrites cube.data with
+        .data of cropped cube, that releases not cropped array from memory.
+        it is incontrast to original Hyperspy implementation
+        wchich keeps the reference of original not-cropped data under
+        .base attribute preventing memory freeing."""
         if self.actionlock_onto_current_slice.isChecked():
             self.actionlock_onto_current_slice.setChecked(False)
-        self.cube.crop(self.i_height, start=int(self.align_line_x1.pos()[0]),
+        self.cube.crop("width", start=int(self.align_line_x1.pos()[0]),
                        end=int(self.align_line_x2.pos()[0]))
-        self.cube.crop(self.i_width, start=int(self.align_line_y1.pos()[1]),
+        self.cube.crop("height", start=int(self.align_line_y1.pos()[1]),
                        end=int(self.align_line_y2.pos()[1]))
-        self.i_data = self.cube.data
-        self.shifts = np.zeros(shape=(self.i_data.shape[self.i_depth], 2),
-                               dtype=np.int32)
-        self.at_matrices = {}
+        b_slices = len(self.blacklist_mask.nonzero()[0])
+        if b_slices > 0:
+            n_slices = len((~self.blacklist_mask).nonzero()[0])
+            data_sel = self.get_full_slice()
+            data_black = data_sel.copy()
+            data_sel[self.i_depth] = slice(0, n_slices, 1)
+            data_black[self.i_depth] = ~self.blacklist_mask
+            self.cube.data[(*data_sel,)] = self.cube.data[(*data_black,)]
+            self.cube.crop(self.i_hspy_depth, end=n_slices)
+        self.cube.data = self.cube.data.copy()  # released croped data
+        self.load_hspy_signal(self.cube)
         self.switch_to_simple_shift_widget()
         self.align_line_x1.setPos(0)
         self.align_line_x2.setPos(self.i_data.shape[self.i_width])
         self.align_line_y1.setPos(0)
         self.align_line_y2.setPos(self.i_data.shape[self.i_height])
-        self.slice_iv.setImage(self.i_data, axes={"t": self.i_depth,
-                                                  "x": self.i_width,
-                                                  "y": self.i_height})
-        self.setup_slicers()
 
     def normalize(self):
         x1 = int(self.align_line_x1.pos()[0])
@@ -531,7 +558,8 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.i_data = self.cube.data
         self.shifts = np.zeros(shape=(self.i_data.shape[self.i_depth], 2))
         self.shifts = self.shifts.astype(np.int32)
-        self.blacklist_mask = np.full((self.i_data.shape[self.i_depth]), False,
+        self.blacklist_mask = np.full((self.i_data.shape[self.i_depth]),
+                                      False,
                                       dtype=bool)
         self.slice_iv.setImage(self.i_data, axes={'t': self.i_depth,
                                                   'x': self.i_width,
