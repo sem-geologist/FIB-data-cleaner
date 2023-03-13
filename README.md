@@ -24,12 +24,8 @@ This tool provides posibilities to:
 * has included QtConsole, which allows to use other Hyperspy functions.
 * Has GUI for consolidating stacked original metadata into arrays for persistant saving under original metadata of Hyperspy Signal.
 * Has single button to strip away stacked original metadata, which otherwise would be converted during saving into other types, plus if not removed, it would extend loading and saving time few order of magnitude.
+* posibility to blacklist slices (i.e. when FIB is not milling away the cube in sequence of images (common situation at starting up milling, or restarting/continuing after drift correction)) and remove when cropping.
 * export data cube as separate images for every slice, either as "raw"-like or with LUT applied.
-
-It does not use `isig` or `inav` from HyperSpy signals, as pyqtgraph ImageView expects numpy array.
-Direct access of numpy arrays allows to visualise the slices much faster than what HyperSpy's `matplotlib`-based visualisation is able to achieve.
-There was consideration at some part to go for `RossetaSciIO` as it has much lesser requiriments than HyperSpy. However Hyperspy provides some nice features like signal stacking.
-And while its metadata handling is questionable, the functionality is already there, and work-around its clumsinness was not so hard to implement.
 
 
 ### Requirements
@@ -62,6 +58,12 @@ app.show()
 
 It is possible to load 3D data cube then with `app.load_hspy_signal`.
 When launched from Jupyter notebook (or from external QtConsole), app disables embedded QtConsole.
+
+### etc
+This tool does not use `isig` or `inav` from HyperSpy signals, as pyqtgraph ImageView expects numpy array.
+Direct access of numpy arrays allows to visualise the slices much faster than what HyperSpy's `matplotlib`-based visualisation is able to achieve.
+There was consideration at some part to go for `RossetaSciIO` as it has much lesser requiriments than HyperSpy. However Hyperspy provides some nice features like signal stacking.
+And while its metadata handling is questionable, the functionality is already there, and work-around its clumsinness was not so hard to implement.
 
 ### Future considerations:
 * `opencv` has some interesting and useful filters (i.e. Bilateral), which could come handy when dealing with noisy FIB-SEM data.
