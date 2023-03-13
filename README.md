@@ -61,7 +61,7 @@ app.show()
 ```
 
 It is possible to load 3D data cube then with `app.load_hspy_signal`.
-When launching from Jupyter notebook, app disabled embedded QtConsole.
+When launched from Jupyter notebook (or from external QtConsole), app disables embedded QtConsole.
 
 ### Future considerations:
 * `opencv` has some interesting and useful filters (i.e. Bilateral), which could come handy when dealing with noisy FIB-SEM data.
