@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fibcleaner"
+authors = [
+    {name="Petras Jokubauskas", email="p.jokubauskas@uw.edu.pl"},
+]
+description = "FIB-SEM powerful slice cleaning GUI tool for manual alignment, cropping, rejection of redundant slices and more..."
+readme = "README.md"
+requires-python = ">=3.9"
+keywords = ["FIB-SEM"]
+license = {file = "LICENSE"}
+dependencies = [
+    "PyQt5 >= 5.15",
+    "hyperspy",
+    "pyqtgraph",
+    "opencv-contrib-python-headless",
+    "qtconsole"]
+dynamic = ["version"]
+
+[project.urls]
+homepage = "https://github.com/sem-geologist/FIB-data-cleaner"
+repository = "https://github.com/sem-geologist/FIB-data-cleaner"
+
+[tool.setuptools.dynamic]
+version = {attr = "FIBDataCleaner.fdc.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["FIBDataCleaner*"]
+
+[project.gui-scripts]
+fibdatacleaner = "FIBDataCleaner.fdc:main"
+

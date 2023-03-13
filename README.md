@@ -33,14 +33,38 @@ And while its metadata handling is questionable, the functionality is already th
 
 
 ### Requirements
-Currently this is not a stand-alone application, and requires functioning python (preferably virtual) environment (conda/mamba venv or anything similar).
+Currently this is not a stand-alone application, and requires functioning python (preferably virtual) environment (conda/mamba, venv or anything similar).
 * GUI is based on `PyQt5` and for fast Graphical interaction uses `pyqtgraph` library.
-* Requires `hyperspy` to load and save datasets.
+* Requires `hyperspy` to load and save datasets, stack slices and its metadata.
 * requires `opencv` for affine transformations and calculation of transformation matrix from sets of 3 original and moved points.
 
 When having a working hyperspy environmet it is easy to meet above requiriments by `conda install` or `pip install` the `pyqtgraph` library, and `pip install` `opencv-contrib-python-headless`.
+Installing using `pip` should take care of listed dependencies.
+
+### Installation
+Currently it is possible to install it with pip install, it uses pyproject.toml and setuptools.
+
+### Launching
+After the installation The software is avalaable as `FIBDataCleaner` package.
+#### As stand alone
+It can be launched from working CLI of virtual environment simply typing `fibdatacleaner`.
+It loads current python kernel to embedded QtConsole, where hyperspy, numpy the GUI (as `app`) and pyqtgraph are preloaded. It allows to access hyperspy functionality from within software (i.e. more advanced loading of files). Embedded Console is inside QDockingWidget which can be deatched and moved i.e. to other monitor.
+#### Load as library and launch from within Jupyter notebook or QtConsole.
+This way it can be launched from hyperspy notebook, extending allready developed workflow.
+To launch it at first `%gui qt5` needs to be executed in jupyter notebook if was not already.
+Then:
+```python
+from FIBDataCleaner.fdc import FIBSliceCorrector
+
+app = FIBSliceCorrector()
+app.show()
+```
+
+It is possible to load 3D data cube then with `app.load_hspy_signal`.
+When launching from Jupyter notebook, app disabled embedded QtConsole.
 
 ### Future considerations:
 * `opencv` has some interesting and useful filters (i.e. Bilateral), which could come handy when dealing with noisy FIB-SEM data.
 * pyqtgraph has some interesting 3D capabilities and it is worth to explore (that would bring in `pyopengl` as requiriments.
-* alternative vispy is worth of exploring.
+* alternativelly the `vispy` lib is worth of exploring for 3D visualisation.
+* package this as library in pypi
