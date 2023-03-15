@@ -38,10 +38,10 @@ When having a working hyperspy environmet it is easy to meet above requiriments 
 Installing using `pip` should take care of listed dependencies.
 
 ### Installation
-Currently it is possible to install it with pip install, it uses pyproject.toml and setuptools.
+Currently it is possible to install it with `pip install .` in directory where it is downloaded and extracted (it uses pyproject.toml and setuptools, there is no need for setup.py).
 
 ### Launching
-After the installation The software is avalaable as `FIBDataCleaner` package.
+After the installation The software is available under `FIBDataCleaner` package and can be launc as stand alone or imported and used from within script or jupyter notebook.
 #### As stand alone
 It can be launched from working CLI of virtual environment simply typing `fibdatacleaner`.
 It loads current python kernel to embedded QtConsole, where hyperspy, numpy the GUI (as `app`) and pyqtgraph are preloaded. It allows to access hyperspy functionality from within software (i.e. more advanced loading of files). Embedded Console is inside QDockingWidget which can be deatched and moved i.e. to other monitor.
