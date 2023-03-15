@@ -36,7 +36,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.at_matrices = {}  # affine transformation matrices
         delegate = SpinBoxDelegate()
         self.mtv.setItemDelegate(delegate)
-        self.actionLoad.triggered.connect(self.load_single_file)
+        self.actionLoad.triggered.connect(self.load_single_file_gui)
         self.actionAbout_Qt.triggered.connect(self.show_about_qt)
         self.actionAbout_this_software.triggered.connect(self.show_about)
         self.v_depth_iv.ui.roiBtn.hide()
@@ -59,6 +59,8 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.dockConsole.hide()
         self.tv_metadata.setSelectionMode(
             QtWidgets.QAbstractItemView.ExtendedSelection)
+        self.multi_mtv.setVisible(False)
+        self.pw_metadata.setVisible(False)
         # use some Qt built-in icons:
         pixmapi = QtWidgets.QStyle.SP_ArrowUp
         self.up_button.setIcon(self.style().standardIcon(pixmapi))
@@ -76,7 +78,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.reset_triangle.pressed.connect(self.reset_from_three)
 
     def get_full_slice(self):
-        """get full slice selecting whole diminsions of data
+        """get full slice selecting whole dimentions of data
         for further manipulatio of slice"""
         if self.i_data is None:
             raise ValueError("no data is loaded")
@@ -87,6 +89,45 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         i_slice[self.i_depth] = i_frame
         return (*i_slice,)
 
+    def matrix_corection_mode_handler(self, mode):
+        if mode == 0:
+            self.pushMultiplyMatrices.setDisabled(True)
+            try:
+                self.pushMultiplyMatrices.pressed.disconnect()
+            except TypeError:
+                pass
+            self.multi_mtv.setVisible(False)
+            return
+        self._multi_mx = {'matrix': np.identity(3, dtype=np.float32)}
+        model = TransformationMatrixModel(self._multi_mx)
+        self.multi_mtv.setVisible(True)
+        self.multi_mtv.setModel(model)
+        self.pushMultiplyMatrices.setEnabled(True)
+        if mode == 1:  # pre-multiply
+            self.pushMultiplyMatrices.pressed.connect(self.multi_pre_multi)
+        elif mode == 2:
+            self.pushMultiplyMatrices.pressed.connect(self.multi_post_multi)
+
+    def multi_pre_multi(self):
+        index, end = self.get_selection()
+        self.setCursor(QtCore.Qt.WaitCursor)
+        for i in range(index, end):
+            if i not in self.at_matrices:
+                self.init_at_at_index(i)
+            self.pre_multiply_at(i, self._multi_mx['matrix'])
+        self.unsetCursor()
+        self.comboMatrixMode.setCurrentIndex(0)
+
+    def multi_post_multi(self):
+        index, end = self.get_selection()
+        self.setCursor(QtCore.Qt.WaitCursor)
+        for i in range(index, end):
+            if i not in self.at_matrices:
+                self.init_at_at_index(i)
+            self.post_multiply_at(i, self._multi_mx['matrix'])
+        self.unsetCursor()
+        self.comboMatrixMode.setCurrentIndex(0)
+
     def get_index_for_manipulation(self):
         if self.slice_lock.isChecked():
             return self.locked_index
@@ -96,6 +137,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         """generate and set initial affine transformation matrix
            for given index, also generate model, which can be
            viewed with QTableView"""
+        current_flag = False
         if index_z is None:
             current_flag = True
             index_z = self.get_index_for_manipulation()
@@ -252,6 +294,8 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
                 self.at_matrices[i]['initial'] = copy(
                     self.i_data[(*i_slice,)])
                 self.apply_affine_transformation(i)
+                self.at_matrices[i]['model'].dataChanged.connect(
+                    self.apply_affine_transformation)
         self.update_shift_widget()
         self.which_widget()
         self.slice_iv.updateImage()
@@ -413,7 +457,9 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         fn, _ = QtWidgets.QFileDialog.getSaveFileName()
         if fn is None:
             return
+        self.setCursor(QtCore.Qt.WaitCursor)
         self.cube.save(fn)
+        self.unsetCursor()
 
     def export_with_hs(self):
         fn, _ = QtWidgets.QFileDialog.getSaveFileName(
@@ -496,12 +542,15 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         self.v_depth_iv.updateImage()
         self.h_depth_iv.updateImage()
 
-    def load_single_file(self):
+    def load_single_file_gui(self):
         fn, _ = QtWidgets.QFileDialog.getOpenFileName()
         if fn is None or fn == "":
             return
-        self.setCursor(QtCore.Qt.WaitCursor)
         self.unload_file()
+        self.load_file(fn)
+
+    def load_file(self, fn):
+        self.setCursor(QtCore.Qt.WaitCursor)
         signal = hs.load(fn)
         if type(signal) == list:
             str_signals = [str(i) for i in signal]
@@ -609,65 +658,67 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             self.h_roi_line_btn.setVisible(False)
             self.h_roi_line_btn.pressed.connect(self.align_to_h_guide_roi)
             self.first_time_load = False
-
-    def change_plot_metadata_source(self, index):
-        if index == 0:
-            self.tv_metadata.setData(
-                self.cube.original_metadata.stack_elements.element0.as_dictionary(),
-                hideRoot=True)
-            self.tv_metadata.collapseAll()
-            self.pb_destroy_stack_elements.setEnabled(True)
-            self.pb_stack_in_arrays.setEnabled(True)
-        else:
-            self.tv_metadata.setData(
-                self.cube.original_metadata.stack_in_arrays.as_dictionary(),
-                hideRoot=True)
-            self.tv_metadata.collapseAll()
-            self.pb_stack_in_arrays.setEnabled(False)
-
-    def setup_metadata_stack_gui(self):
-        if "stack_elements" in self.cube.original_metadata:
-            self.cb_treeview_source.setEnabled(True)
-            self.tv_metadata.setEnabled(True)
-            self.pw_metadata.setEnabled(True)
-            self.change_plot_metadata_source(0)
+            self.comboMatrixMode.currentIndexChanged.connect(
+                self.matrix_corection_mode_handler)
             self.tv_metadata.itemSelectionChanged.connect(
                 self.plot_selected_metadata)
-            if "stack_in_arrays" not in self.cube.original_metadata:
-                self.cube.original_metadata.add_node("stack_in_arrays")
             self.cb_treeview_source.currentIndexChanged.connect(
                 self.change_plot_metadata_source)
             self.pb_destroy_stack_elements.pressed.connect(
                 self.discard_stack_elements)
             self.pb_stack_in_arrays.pressed.connect(
                 self.stack_selected_metadata)
-        elif "stack_in_arrays" in self.cube.original_metadata:
+
+    def change_plot_metadata_source(self, index):
+        if index == 0:
+            self.tv_metadata.setData(
+                self.cube.metadata.as_dictionary(),
+                hideRoot=True)
+            self.tv_metadata.collapseAll()
+            self.pb_stack_in_arrays.setEnabled(False)
+            self.pw_metadata.setVisible(False)
+        elif index == 1:
+            try:
+                self.tv_metadata.setData(
+                    self.cube.original_metadata.stack_elements.element0.as_dictionary(),
+                    hideRoot=True)
+                self.pw_metadata.setVisible(True)
+                self.pb_destroy_stack_elements.setEnabled(True)
+                self.pb_stack_in_arrays.setEnabled(True)
+            except AttributeError:
+                self.tv_metadata.setData({})
+                self.pw_metadata.setVisible(False)
+            self.tv_metadata.collapseAll()
+        else:
+            self.tv_metadata.setData(
+                self.cube.original_metadata.stack_in_arrays.as_dictionary(),
+                hideRoot=True)
+            self.tv_metadata.collapseAll()
+            self.pw_metadata.setVisible(True)
+            self.pb_stack_in_arrays.setEnabled(False)
+
+    def setup_metadata_stack_gui(self):
+        if "stack_elements" in self.cube.original_metadata:
+            self.cb_treeview_source.setEnabled(True)
             self.cb_treeview_source.setCurrentIndex(1)
-            self.tv_metadata.setEnabled(True)
-            self.pw_metadata.setEnabled(True)
-            self.cb_treeview_source.setEnabled(False)
             self.change_plot_metadata_source(1)
+            if "stack_in_arrays" not in self.cube.original_metadata:
+                self.cube.original_metadata.add_node("stack_in_arrays")
+        elif "stack_in_arrays" in self.cube.original_metadata:
+            self.cb_treeview_source.setCurrentIndex(2)
+            self.cb_treeview_source.setEnabled(True)
+            self.change_plot_metadata_source(2)
             self.pb_destroy_stack_elements.setEnabled(False)
             self.tv_metadata.itemSelectionChanged.connect(
                 self.plot_selected_metadata)
         else:
-            self.tv_metadata.setEnabled(False)
-            self.pw_metadata.setEnabled(False)
+            # self.tv_metadata.setEnabled(False)
+            self.pw_metadata.setVisible(False)
+            self.change_plot_metadata_source(0)
             self.cb_treeview_source.setEnabled(False)
             self.pb_destroy_stack_elements.setEnabled(False)
             self.pb_stack_in_arrays.setEnabled(False)
-            self.tv_metadata.setData({})
-            try:
-                self.tv_metadata.itemSelectionChanged.disconnect(
-                    self.plot_selected_metadata)
-                self.cb_treeview_source.currentIndexChanged.disconnect(
-                    self.change_plot_metadata_source)
-                self.pb_destroy_stack_elements.pressed.disconnect(
-                    self.discard_stack_elements)
-                self.pb_stack_in_arrays.pressed.disconnect(
-                    self.stack_selected_metadata)
-            except TypeError:
-                pass
+            # self.tv_metadata.setData({})
 
     def discard_stack_elements(self):
         """strip up Hyperspy signal from stacked original metadata,
@@ -703,9 +754,13 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
                     dtb_path, np.array(plot_data))
 
     def plot_selected_metadata(self):
+        # currently metadata contains no arrays, those there is no need to
+        # plot common metadata:
+        if self.cb_treeview_source.currentIndex() == 0:
+            return
         selected_items = self.tv_metadata.selectedItems()
         om = self.cube.original_metadata
-        if self.cb_treeview_source.currentIndex() == 0:
+        if self.cb_treeview_source.currentIndex() == 1:
             valid_items = [item for item in selected_items
                            if item.data(1, 0) in ['int', 'float']]
         else:
@@ -716,7 +771,7 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             paths = [item for item in self.tv_metadata.nodes.items()
                      if item[1] in valid_items]
             n_slices = self.slice_iv.nframes()
-            if self.cb_treeview_source.currentIndex() == 0:
+            if self.cb_treeview_source.currentIndex() == 1:
                 for j, p in enumerate(paths):
                     plot_data = [
                         get_nested(om.stack_elements[f"element{i}"], p[0])
@@ -926,12 +981,13 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
         if self.simple_mode:
             if index in self.at_matrices:
                 self.switch_to_matrix_correction_widget()
+            else:
+                self.switch_to_simple_shift_widget()
         else:
             if index in self.at_matrices:
                 self.update_affine_widget()
             else:
                 self.switch_to_simple_shift_widget()
-
 
     def update_affine_widget(self):
         index = self.get_index_for_manipulation()
@@ -993,16 +1049,20 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
             interp_mode)
         self.update_images()
 
-    def shift_multi(self, strenght, axis):
+    def get_selection(self):
         if self.slice_lock.isChecked():
-            index = self.locked_index
+            start = self.locked_index
             end = self.locked_index + 1
         else:
-            index = self.current_i
+            start = self.current_i
             if self.to_end_checkbox.isChecked():
                 end = self.i_data.shape[self.i_depth]
             else:
-                end = index + self.slices_spinbox.value()
+                end = start + self.slices_spinbox.value()
+        return start, end
+
+    def shift_multi(self, strenght, axis):
+        index, end = self.get_selection()
         for i in range(index, end):
             self.i_data[self.get_frame_slice(i)] = np.roll(
                 self.i_data[self.get_frame_slice(i)], strenght, axis=axis)
@@ -1051,9 +1111,16 @@ class FIBSliceCorrector(QtWidgets.QMainWindow,
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] in ["-h", "--help"]:
+        print(f"FIB-SEM Data Cleaner version {__version__}\n\n"
+              "Usage: fibdatacleaner [file]    launch and load specified file\n"
+              "   or: fibdatacleaner           launch without loading anything")
+        return 
     app = QtWidgets.QApplication(sys.argv)
     main_window = FIBSliceCorrector()
     main_window.show()
+    if len(sys.argv) == 2:
+        main_window.load_file(sys.argv[1])
     app.exec()
 
 

@@ -38,26 +38,16 @@
          <string>Standard view (x, y)</string>
         </property>
         <layout class="QGridLayout" name="gridLayout_6">
-         <item row="1" column="0">
-          <widget class="QLabel" name="label">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="text">
-            <string>Current slice: </string>
-           </property>
-          </widget>
-         </item>
-         <item row="1" column="5">
+         <item row="1" column="8">
           <widget class="QSlider" name="transparency_slider">
            <property name="enabled">
             <bool>false</bool>
            </property>
            <property name="toolTip">
             <string>Transparency of the locked slice</string>
+           </property>
+           <property name="statusTip">
+            <string>left - transparent; right - opaque</string>
            </property>
            <property name="maximum">
             <number>100</number>
@@ -73,15 +63,41 @@
            </property>
           </widget>
          </item>
-         <item row="1" column="3">
+         <item row="0" column="0" colspan="9">
+          <widget class="ImageView" name="slice_iv"/>
+         </item>
+         <item row="1" column="6">
           <widget class="QLabel" name="lock_text">
            <property name="text">
             <string> Lock onto current slice</string>
            </property>
           </widget>
          </item>
-         <item row="0" column="0" colspan="6">
-          <widget class="ImageView" name="slice_iv"/>
+         <item row="1" column="3">
+          <widget class="QCheckBox" name="check_box_blacklisted">
+           <property name="focusPolicy">
+            <enum>Qt::NoFocus</enum>
+           </property>
+           <property name="toolTip">
+            <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;In some FIB-SEM cases, the milling is not refreshing the wall, and consequtive SEM slices taken represent the same wall. Checking this box will remove marked stack when saving the stack as a new file(s).&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+           </property>
+           <property name="statusTip">
+            <string>marks the current slice to be removed from stack when cropping.</string>
+           </property>
+           <property name="text">
+            <string>blacklisted</string>
+           </property>
+           <property name="shortcut">
+            <string>Shift+Del</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="2">
+          <widget class="Line" name="line">
+           <property name="orientation">
+            <enum>Qt::Vertical</enum>
+           </property>
+          </widget>
          </item>
          <item row="1" column="1">
           <widget class="QLabel" name="current_slice_n">
@@ -96,10 +112,13 @@
            </property>
           </widget>
          </item>
-         <item row="1" column="2">
+         <item row="1" column="5">
           <widget class="QToolButton" name="slice_lock">
            <property name="toolTip">
             <string/>
+           </property>
+           <property name="statusTip">
+            <string>(un-) lock (current) slice to be overlayed with adjustable transparency</string>
            </property>
            <property name="layoutDirection">
             <enum>Qt::RightToLeft</enum>
@@ -115,6 +134,32 @@
            </property>
           </widget>
          </item>
+         <item row="1" column="0">
+          <widget class="QLabel" name="label">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>0</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>Current slice: </string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="4">
+          <widget class="Line" name="line_2">
+           <property name="orientation">
+            <enum>Qt::Vertical</enum>
+           </property>
+          </widget>
+         </item>
         </layout>
        </widget>
        <widget class="QTabWidget" name="tabWidget">
@@ -126,82 +171,116 @@
         </property>
         <widget class="QWidget" name="tab_3">
          <attribute name="title">
-          <string>MetaPlot</string>
+          <string>Metadata</string>
          </attribute>
          <layout class="QGridLayout" name="gridLayout_5">
-          <item row="4" column="0">
+          <property name="leftMargin">
+           <number>3</number>
+          </property>
+          <property name="topMargin">
+           <number>3</number>
+          </property>
+          <property name="rightMargin">
+           <number>3</number>
+          </property>
+          <property name="bottomMargin">
+           <number>3</number>
+          </property>
+          <property name="spacing">
+           <number>3</number>
+          </property>
+          <item row="0" column="0" colspan="2">
+           <widget class="QSplitter" name="splitter_4">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <widget class="QWidget" name="">
+             <layout class="QVBoxLayout" name="verticalLayout_2">
+              <property name="spacing">
+               <number>2</number>
+              </property>
+              <item>
+               <widget class="QComboBox" name="cb_treeview_source">
+                <property name="enabled">
+                 <bool>true</bool>
+                </property>
+                <property name="toolTip">
+                 <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Currently stack_elements in original_metadata of hyperspy signal is provided only when loading separate files and using &lt;span style=&quot; font-weight:600;&quot;&gt;stack=True&lt;/span&gt;, ... Files with whole stack such as hspy can have the files with converted types to bytes or without the stack_elements present. This software createas new branch under original_metadata called &amp;quot;stack_in_arrays&amp;quot; - which aggregates selected numerical metadata from stack_elements into arrays, so that saving and loading hspy would return consistent metadata for slices.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+                </property>
+                <property name="statusTip">
+                 <string>select which metadata to show in tree view</string>
+                </property>
+                <item>
+                 <property name="text">
+                  <string extracomment="for whole signal">common metadata</string>
+                 </property>
+                </item>
+                <item>
+                 <property name="text">
+                  <string>stack_elements</string>
+                 </property>
+                </item>
+                <item>
+                 <property name="text">
+                  <string>stack_in_arrays</string>
+                 </property>
+                </item>
+               </widget>
+              </item>
+              <item>
+               <widget class="DataTreeWidget" name="tv_metadata">
+                <property name="enabled">
+                 <bool>true</bool>
+                </property>
+                <property name="sizePolicy">
+                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                  <horstretch>1</horstretch>
+                  <verstretch>0</verstretch>
+                 </sizepolicy>
+                </property>
+                <property name="selectionMode">
+                 <enum>QAbstractItemView::ExtendedSelection</enum>
+                </property>
+                <property name="selectionBehavior">
+                 <enum>QAbstractItemView::SelectRows</enum>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+            <widget class="PlotWidget" name="pw_metadata">
+             <property name="enabled">
+              <bool>true</bool>
+             </property>
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+               <horstretch>5</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+            </widget>
+           </widget>
+          </item>
+          <item row="1" column="0">
            <widget class="QPushButton" name="pb_stack_in_arrays">
             <property name="enabled">
              <bool>false</bool>
+            </property>
+            <property name="statusTip">
+             <string>stack values from selected metadata branch into array for slices and place into original_metadata</string>
             </property>
             <property name="text">
              <string>push selected to stack_as_arrays</string>
             </property>
            </widget>
           </item>
-          <item row="2" column="0">
-           <widget class="QCheckBox" name="check_box_blacklisted">
-            <property name="focusPolicy">
-             <enum>Qt::NoFocus</enum>
-            </property>
-            <property name="toolTip">
-             <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;In some FIB-SEM cases, the milling is not refreshing the wall, and consequtive SEM slices taken represent the same wall. Checking this box will remove marked stack when saving the stack as a new file(s).&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
-            </property>
-            <property name="text">
-             <string>Blacklist current slice</string>
-            </property>
-            <property name="shortcut">
-             <string>Shift+Del</string>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="0" colspan="2">
-           <widget class="QSplitter" name="splitter_5">
-            <property name="orientation">
-             <enum>Qt::Horizontal</enum>
-            </property>
-            <widget class="DataTreeWidget" name="tv_metadata">
-             <property name="enabled">
-              <bool>false</bool>
-             </property>
-             <property name="selectionMode">
-              <enum>QAbstractItemView::ExtendedSelection</enum>
-             </property>
-             <property name="selectionBehavior">
-              <enum>QAbstractItemView::SelectRows</enum>
-             </property>
-            </widget>
-            <widget class="PlotWidget" name="pw_metadata">
-             <property name="enabled">
-              <bool>false</bool>
-             </property>
-            </widget>
-           </widget>
-          </item>
-          <item row="2" column="1">
-           <widget class="QComboBox" name="cb_treeview_source">
-            <property name="enabled">
-             <bool>false</bool>
-            </property>
-            <property name="toolTip">
-             <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Currently stack_elements in original_metadata of hyperspy signal is provided only when loading separate files and using &lt;span style=&quot; font-weight:600;&quot;&gt;stack=True&lt;/span&gt;, ... Files with whole stack such as hspy can have the files with converted types to bytes or without the stack_elements present. This software createas new branch under original_metadata called &amp;quot;stack_in_arrays&amp;quot; - which aggregates selected numerical metadata from stack_elements into arrays, so that saving and loading hspy would return consistent metadata for slices.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
-            </property>
-            <item>
-             <property name="text">
-              <string>stack_elements</string>
-             </property>
-            </item>
-            <item>
-             <property name="text">
-              <string>stack_in_arrays</string>
-             </property>
-            </item>
-           </widget>
-          </item>
-          <item row="4" column="1">
+          <item row="1" column="1">
            <widget class="QPushButton" name="pb_destroy_stack_elements">
             <property name="enabled">
              <bool>false</bool>
+            </property>
+            <property name="statusTip">
+             <string>strip the &quot;stack_elements&quot; from original_metadata in hyperspy signal</string>
             </property>
             <property name="text">
              <string>Discard stack_elements</string>
@@ -277,12 +356,12 @@
                <item row="0" column="0" rowspan="2">
                 <widget class="QGroupBox" name="groupBox_4">
                  <property name="title">
-                  <string>Matrix Correction</string>
+                  <string>Affine Transformation Correction</string>
                  </property>
                  <property name="alignment">
                   <set>Qt::AlignCenter</set>
                  </property>
-                 <layout class="QGridLayout" name="gridLayout">
+                 <layout class="QGridLayout" name="gridLayout" rowstretch="0,0" columnstretch="0,0,0">
                   <property name="leftMargin">
                    <number>1</number>
                   </property>
@@ -298,56 +377,7 @@
                   <property name="spacing">
                    <number>1</number>
                   </property>
-                  <item row="1" column="0">
-                   <widget class="QWidget" name="widget_3" native="true">
-                    <property name="enabled">
-                     <bool>true</bool>
-                    </property>
-                    <layout class="QHBoxLayout" name="horizontalLayout_2">
-                     <property name="spacing">
-                      <number>1</number>
-                     </property>
-                     <property name="leftMargin">
-                      <number>1</number>
-                     </property>
-                     <property name="topMargin">
-                      <number>1</number>
-                     </property>
-                     <property name="rightMargin">
-                      <number>1</number>
-                     </property>
-                     <property name="bottomMargin">
-                      <number>1</number>
-                     </property>
-                    </layout>
-                   </widget>
-                  </item>
-                  <item row="0" column="0">
-                   <widget class="QTableView" name="mtv">
-                    <property name="enabled">
-                     <bool>false</bool>
-                    </property>
-                    <property name="sizePolicy">
-                     <sizepolicy hsizetype="MinimumExpanding" vsizetype="MinimumExpanding">
-                      <horstretch>0</horstretch>
-                      <verstretch>0</verstretch>
-                     </sizepolicy>
-                    </property>
-                    <property name="minimumSize">
-                     <size>
-                      <width>100</width>
-                      <height>100</height>
-                     </size>
-                    </property>
-                    <property name="baseSize">
-                     <size>
-                      <width>100</width>
-                      <height>100</height>
-                     </size>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="0" column="1" rowspan="2">
+                  <item row="0" column="2" rowspan="2">
                    <widget class="QWidget" name="widget" native="true">
                     <layout class="QVBoxLayout" name="verticalLayout_5">
                      <property name="spacing">
@@ -369,6 +399,9 @@
                       <widget class="QPushButton" name="init_slice_btn">
                        <property name="enabled">
                         <bool>false</bool>
+                       </property>
+                       <property name="statusTip">
+                        <string>init affine matrix transformation for current slice</string>
                        </property>
                        <property name="text">
                         <string>init for slice</string>
@@ -426,6 +459,9 @@
                           <property name="enabled">
                            <bool>false</bool>
                           </property>
+                          <property name="statusTip">
+                           <string>Toggle &quot;sticked&quot; triangle to 3 reference points</string>
+                          </property>
                           <property name="text">
                            <string>🖈⨻</string>
                           </property>
@@ -438,6 +474,9 @@
                          <widget class="QToolButton" name="reset_triangle">
                           <property name="enabled">
                            <bool>false</bool>
+                          </property>
+                          <property name="statusTip">
+                           <string>reset the matrix to state before matrix modifications by triangle geometry change</string>
                           </property>
                           <property name="text">
                            <string>...</string>
@@ -454,6 +493,9 @@
                             <horstretch>0</horstretch>
                             <verstretch>1</verstretch>
                            </sizepolicy>
+                          </property>
+                          <property name="statusTip">
+                           <string>define 3 points for affine transformation &quot;by triangle&quot; manipulation</string>
                           </property>
                           <property name="text">
                            <string>3 point def.</string>
@@ -484,6 +526,9 @@
                        <property name="enabled">
                         <bool>false</bool>
                        </property>
+                       <property name="statusTip">
+                        <string>reset to original geometry</string>
+                       </property>
                        <property name="text">
                         <string>reset</string>
                        </property>
@@ -507,19 +552,22 @@
                        <property name="toolTip">
                         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;modify current&lt;/span&gt;: modify directly matrix of affine transformation of currently set slice.&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;pre-multiply&lt;/span&gt;: widget shows other matrix, which can be used for scaling, translation, skew, rotation, and that is multiplied with current matrix of slice or slices, and multiplication is applied with defined matrix being initial and current matrix being additional.&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600;&quot;&gt;post-multiply&lt;/span&gt;: is like pre-multiply just with different order of multiplication.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
                        </property>
+                       <property name="statusTip">
+                        <string>change mode of matrix manipulation.</string>
+                       </property>
                        <item>
                         <property name="text">
-                         <string>modify current slice</string>
+                         <string>modify current</string>
                         </property>
                        </item>
                        <item>
                         <property name="text">
-                         <string>pre-multiply selection</string>
+                         <string>pre-multiply selected</string>
                         </property>
                        </item>
                        <item>
                         <property name="text">
-                         <string>post-multiply selection</string>
+                         <string>post-multiply selected</string>
                         </property>
                        </item>
                       </widget>
@@ -532,9 +580,110 @@
                        <property name="toolTip">
                         <string>multiply currenly present matrice with affine transformation matrix/-eces of slice(-s)</string>
                        </property>
+                       <property name="statusTip">
+                        <string>multiply matrices for selected range of slices.</string>
+                       </property>
                        <property name="text">
                         <string>Multiply</string>
                        </property>
+                      </widget>
+                     </item>
+                    </layout>
+                   </widget>
+                  </item>
+                  <item row="1" column="0">
+                   <widget class="QWidget" name="widget_3" native="true">
+                    <property name="enabled">
+                     <bool>true</bool>
+                    </property>
+                    <layout class="QHBoxLayout" name="horizontalLayout_2">
+                     <property name="spacing">
+                      <number>1</number>
+                     </property>
+                     <property name="leftMargin">
+                      <number>1</number>
+                     </property>
+                     <property name="topMargin">
+                      <number>1</number>
+                     </property>
+                     <property name="rightMargin">
+                      <number>1</number>
+                     </property>
+                     <property name="bottomMargin">
+                      <number>1</number>
+                     </property>
+                     <item>
+                      <widget class="QTableView" name="mtv">
+                       <property name="enabled">
+                        <bool>false</bool>
+                       </property>
+                       <property name="sizePolicy">
+                        <sizepolicy hsizetype="MinimumExpanding" vsizetype="MinimumExpanding">
+                         <horstretch>0</horstretch>
+                         <verstretch>0</verstretch>
+                        </sizepolicy>
+                       </property>
+                       <property name="minimumSize">
+                        <size>
+                         <width>100</width>
+                         <height>100</height>
+                        </size>
+                       </property>
+                       <property name="baseSize">
+                        <size>
+                         <width>100</width>
+                         <height>100</height>
+                        </size>
+                       </property>
+                       <property name="statusTip">
+                        <string>affine transformation matrix of current slice</string>
+                       </property>
+                       <attribute name="horizontalHeaderMinimumSectionSize">
+                        <number>20</number>
+                       </attribute>
+                       <attribute name="horizontalHeaderDefaultSectionSize">
+                        <number>40</number>
+                       </attribute>
+                       <attribute name="verticalHeaderMinimumSectionSize">
+                        <number>16</number>
+                       </attribute>
+                       <attribute name="verticalHeaderDefaultSectionSize">
+                        <number>24</number>
+                       </attribute>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QTableView" name="multi_mtv">
+                       <property name="sizePolicy">
+                        <sizepolicy hsizetype="MinimumExpanding" vsizetype="MinimumExpanding">
+                         <horstretch>0</horstretch>
+                         <verstretch>0</verstretch>
+                        </sizepolicy>
+                       </property>
+                       <property name="minimumSize">
+                        <size>
+                         <width>100</width>
+                         <height>100</height>
+                        </size>
+                       </property>
+                       <property name="statusTip">
+                        <string>matrix for multiplication</string>
+                       </property>
+                       <property name="cornerButtonEnabled">
+                        <bool>false</bool>
+                       </property>
+                       <attribute name="horizontalHeaderMinimumSectionSize">
+                        <number>20</number>
+                       </attribute>
+                       <attribute name="horizontalHeaderDefaultSectionSize">
+                        <number>40</number>
+                       </attribute>
+                       <attribute name="verticalHeaderMinimumSectionSize">
+                        <number>16</number>
+                       </attribute>
+                       <attribute name="verticalHeaderDefaultSectionSize">
+                        <number>24</number>
+                       </attribute>
                       </widget>
                      </item>
                     </layout>
@@ -624,6 +773,9 @@
                    <widget class="QSpinBox" name="strenght_spinbox">
                     <property name="focusPolicy">
                      <enum>Qt::NoFocus</enum>
+                    </property>
+                    <property name="statusTip">
+                     <string>single shift operation strenght</string>
                     </property>
                     <property name="suffix">
                      <string> px</string>
@@ -777,6 +929,9 @@
            </item>
            <item>
             <widget class="QSpinBox" name="slices_spinbox">
+             <property name="statusTip">
+              <string>number of selected slices for geometry manipulations</string>
+             </property>
              <property name="suffix">
               <string> sl.</string>
              </property>
@@ -790,6 +945,9 @@
            </item>
            <item>
             <widget class="QCheckBox" name="to_end_checkbox">
+             <property name="statusTip">
+              <string>select all slices between current index and last for geometry manipulations</string>
+             </property>
              <property name="text">
               <string>up to end</string>
              </property>
@@ -813,12 +971,12 @@
      <x>0</x>
      <y>0</y>
      <width>1092</width>
-     <height>30</height>
+     <height>22</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFiles">
     <property name="title">
-     <string>Files</string>
+     <string>File</string>
     </property>
     <addaction name="actionLoad"/>
     <addaction name="actionSave"/>
